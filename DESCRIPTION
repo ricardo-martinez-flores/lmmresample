@@ -1,0 +1,27 @@
+Package: lmmresample
+Title: Resampling Inference for Mixed Models of Densely Sampled Time Series
+Version: 0.0.0.9000
+Authors@R: c(
+    person("Ricardo", "Martínez-Flores", , "ricardo.antonio.martinezf@gmail.com",
+           role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-8435-2710")),
+    person("Hans", "Supèr", role = "aut")
+  )
+Description: Permutation and bootstrap inference for linear and generalized
+    linear mixed-effects models fitted to densely sampled physiological time
+    series such as pupillometry or EEG. Provides trial- and participant-level
+    permutation under user-declared exchangeability, simulation-based
+    calibration of the permutation null, family-wise error control with the
+    max-t procedure, cluster bootstrap confidence intervals (percentile and
+    bias-corrected and accelerated), and leave-one-subject-out diagnostics.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.1
+Depends:
+    R (>= 4.1.0)
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+URL: https://github.com/ricardo-martinez-flores/lmmresample
+BugReports: https://github.com/ricardo-martinez-flores/lmmresample/issues
