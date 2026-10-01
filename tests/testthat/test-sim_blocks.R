@@ -140,3 +140,43 @@ test_that("ignored effects trigger warnings", {
   expect_warning(small("within", effect_group = 1), "ignored")
   expect_warning(small("within", effect_interaction = 1), "mixed")
 })
+
+test_that("conditions can be unbalanced", {
+  d <- sim_blocks("within", "trial", n_participants = 5, n_trials = 50,
+                  prop_condition = 0.2, seed = 1)
+  counts <- table(d$participant, d$condition)
+  expect_true(all(counts[, "B"] == 10))
+  expect_true(all(counts[, "A"] == 40))
+
+  d_odd <- sim_blocks("within", "trial", n_participants = 3, n_trials = 7,
+                      prop_condition = 0.3, seed = 1)
+  expect_true(all(table(d_odd$participant, d_odd$condition)[, "B"] == 2))
+
+  d_min <- sim_blocks("within", "trial", n_participants = 3, n_trials = 10,
+                      prop_condition = 0.01, seed = 1)
+  expect_true(all(table(d_min$participant, d_min$condition)[, "B"] == 1))
+
+  expect_error(sim_blocks(prop_condition = 1), "smaller than 1")
+  expect_error(sim_blocks(prop_condition = 0), "greater than 0")
+})
+
+test_that("heavy-tailed residuals keep the requested standard deviation", {
+  d <- sim_blocks("within", "timeseries", n_participants = 4, n_trials = 100,
+                  n_time = 100, sd_participant = 0, sd_trial = 0, ar1 = 0,
+                  residual_df = 5, seed = 7)
+  curve <- tapply(d$y, d$time, mean)
+  r <- d$y - curve[as.character(d$time)]
+  z <- (r - mean(r)) / stats::sd(r)
+  expect_equal(stats::sd(r), 1, tolerance = 0.05)
+  expect_gt(mean(z^4) - 3, 2)
+
+  d_norm <- sim_blocks("within", "timeseries", n_participants = 4,
+                       n_trials = 100, n_time = 100, sd_participant = 0,
+                       sd_trial = 0, ar1 = 0, seed = 7)
+  r_norm <- d_norm$y - tapply(d_norm$y, d_norm$time, mean)[
+    as.character(d_norm$time)]
+  z_norm <- (r_norm - mean(r_norm)) / stats::sd(r_norm)
+  expect_lt(abs(mean(z_norm^4) - 3), 0.3)
+
+  expect_error(sim_blocks(residual_df = 2), "greater than 2")
+})

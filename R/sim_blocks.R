@@ -35,8 +35,9 @@
 #' @param n_participants Number of participants. In `"between"` and `"mixed"`
 #'   designs they are split as evenly as possible between the two groups.
 #' @param n_trials Number of trials per participant. In `"within"` and
-#'   `"mixed"` designs it must be even; half of the trials are assigned to each
-#'   condition in random order.
+#'   `"mixed"` designs, a proportion `prop_condition` of them is assigned to
+#'   condition `"B"` in random order; with balanced conditions (the default)
+#'   `n_trials` must be even.
 #' @param n_time Number of samples per trial.
 #' @param sampling_rate Sampling rate in Hz, used to express `time` in
 #'   seconds.
@@ -55,6 +56,16 @@
 #'   residuals.
 #' @param ar1 Lag-1 autocorrelation of the within-trial residuals, in
 #'   \eqn{[0, 1)}.
+#' @param prop_condition Proportion of each participant's trials assigned to
+#'   condition `"B"` (`"within"` and `"mixed"` designs). The default, 0.5,
+#'   gives balanced conditions; e.g. 0.2 mimics an oddball design with 20%
+#'   targets. The number of `"B"` trials is rounded to the nearest integer and
+#'   kept between 1 and `n_trials - 1`.
+#' @param residual_df Degrees of freedom of a Student t distribution for the
+#'   innovations of the within-trial residuals. `Inf` (the default) gives
+#'   normal residuals; small values (e.g. 4 or 5) give heavy-tailed
+#'   residuals. Residuals are rescaled so that their marginal standard
+#'   deviation is `sd_residual`.
 #' @param seed Optional integer seed. If supplied, the simulation is
 #'   reproducible and the global random number generator state is left
 #'   unchanged.
@@ -101,6 +112,8 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
                        sd_trial = 0.5,
                        sd_residual = 1,
                        ar1 = 0.9,
+                       prop_condition = 0.5,
+                       residual_df = Inf,
                        seed = NULL) {
   design <- match.arg(design)
   level <- match.arg(level)
@@ -120,13 +133,29 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
   if (ar1 >= 1) {
     cli::cli_abort("{.arg ar1} must be smaller than 1, not {ar1}.")
   }
+  check_number(prop_condition, "prop_condition", min = 0, max = 1,
+               min_inclusive = FALSE)
+  if (prop_condition >= 1) {
+    cli::cli_abort("{.arg prop_condition} must be smaller than 1.")
+  }
+  if (!is.numeric(residual_df) || length(residual_df) != 1 ||
+      is.na(residual_df) || residual_df <= 2) {
+    cli::cli_abort("{.arg residual_df} must be a single number greater than 2
+                    (use {.code Inf} for normal residuals).")
+  }
 
   has_condition <- design %in% c("within", "mixed")
   has_group <- design %in% c("between", "mixed")
 
-  if (has_condition && n_trials %% 2 != 0) {
+  if (has_condition && n_trials < 2) {
+    cli::cli_abort(
+      "{.arg n_trials} must be at least 2 in a {.val {design}} design."
+    )
+  }
+  if (has_condition && prop_condition == 0.5 && n_trials %% 2 != 0) {
     cli::cli_abort(c(
-      "{.arg n_trials} must be even in a {.val {design}} design.",
+      "{.arg n_trials} must be even in a {.val {design}} design with balanced
+       conditions.",
       "i" = "Half of the trials are assigned to each condition."
     ))
   }
@@ -154,7 +183,8 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
     effect_condition = effect_condition, effect_group = effect_group,
     effect_interaction = effect_interaction, sd_participant = sd_participant,
     sd_slope = sd_slope, sd_trial = sd_trial, sd_residual = sd_residual,
-    ar1 = ar1, seed = seed
+    ar1 = ar1, prop_condition = prop_condition, residual_df = residual_df,
+    seed = seed
   )
 
   data <- with_seed(seed, simulate_series(params, has_condition, has_group))
@@ -183,9 +213,11 @@ simulate_series <- function(p, has_condition, has_group) {
   # Trial-level quantities
   trial_p <- rep(seq_len(n_p), each = n_k)
   trial_index <- rep(seq_len(n_k), times = n_p)
+  n_b <- min(max(round(n_k * p$prop_condition), 1), n_k - 1)
   cond01 <- if (has_condition) {
-    as.vector(vapply(seq_len(n_p), function(i) sample(rep(0:1, n_k / 2)),
-                     integer(n_k)))
+    as.vector(vapply(seq_len(n_p), function(i) {
+      sample(rep(0:1, c(n_k - n_b, n_b)))
+    }, integer(n_k)))
   } else {
     rep(0L, n_p * n_k)
   }
@@ -199,7 +231,7 @@ simulate_series <- function(p, has_condition, has_group) {
   # Within-trial series: common response curve + AR(1) residuals
   time <- (seq_len(n_t) - 1) / p$sampling_rate
   curve <- response_curve(n_t)
-  resid <- ar1_matrix(n_t, n_p * n_k, p$ar1, p$sd_residual)
+  resid <- ar1_matrix(n_t, n_p * n_k, p$ar1, p$sd_residual, p$residual_df)
   y <- as.vector(resid) + rep(curve, times = n_p * n_k) +
     rep(trial_mean, each = n_t)
 
@@ -232,8 +264,14 @@ response_curve <- function(n_t) {
 }
 
 # Matrix (n_t x n_series) of stationary AR(1) series with marginal sd `sd`.
-ar1_matrix <- function(n_t, n_series, phi, sd) {
-  z <- matrix(stats::rnorm(n_t * n_series), nrow = n_t)
+# Innovations are standard normal, or Student t rescaled to unit variance.
+ar1_matrix <- function(n_t, n_series, phi, sd, df = Inf) {
+  z <- if (is.finite(df)) {
+    stats::rt(n_t * n_series, df) * sqrt((df - 2) / df)
+  } else {
+    stats::rnorm(n_t * n_series)
+  }
+  z <- matrix(z, nrow = n_t)
   e <- z
   e[1, ] <- z[1, ]
   if (n_t > 1 && phi > 0) {

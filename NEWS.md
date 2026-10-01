@@ -19,6 +19,9 @@
   (sign-flipping, for the mean effect when participants differ in their
   effect), freely, or within strata.
 
+* `sim_blocks()` gains `prop_condition` (unbalanced conditions, e.g. oddball
+  designs) and `residual_df` (heavy-tailed residuals).
+
 * New `sim_blocks()` simulates block-structured repeated measurements (full
   time series, trial-level or participant-level data) for within-participant,
   between-group and mixed designs, with known effects, random intercepts and

@@ -19,6 +19,8 @@ sim_blocks(
   sd_trial = 0.5,
   sd_residual = 1,
   ar1 = 0.9,
+  prop_condition = 0.5,
+  residual_df = Inf,
   seed = NULL
 )
 }
@@ -36,8 +38,9 @@ averaged within each participant (and condition, if present).}
 designs they are split as evenly as possible between the two groups.}
 
 \item{n_trials}{Number of trials per participant. In \code{"within"} and
-\code{"mixed"} designs it must be even; half of the trials are assigned to each
-condition in random order.}
+\code{"mixed"} designs, a proportion \code{prop_condition} of them is assigned to
+condition \code{"B"} in random order; with balanced conditions (the default)
+\code{n_trials} must be even.}
 
 \item{n_time}{Number of samples per trial.}
 
@@ -66,6 +69,18 @@ residuals.}
 
 \item{ar1}{Lag-1 autocorrelation of the within-trial residuals, in
 \eqn{[0, 1)}.}
+
+\item{prop_condition}{Proportion of each participant's trials assigned to
+condition \code{"B"} (\code{"within"} and \code{"mixed"} designs). The default, 0.5,
+gives balanced conditions; e.g. 0.2 mimics an oddball design with 20\%
+targets. The number of \code{"B"} trials is rounded to the nearest integer and
+kept between 1 and \code{n_trials - 1}.}
+
+\item{residual_df}{Degrees of freedom of a Student t distribution for the
+innovations of the within-trial residuals. \code{Inf} (the default) gives
+normal residuals; small values (e.g. 4 or 5) give heavy-tailed
+residuals. Residuals are rescaled so that their marginal standard
+deviation is \code{sd_residual}.}
 
 \item{seed}{Optional integer seed. If supplied, the simulation is
 reproducible and the global random number generator state is left
