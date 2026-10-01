@@ -97,7 +97,8 @@ perm_calibrate <- function(model,
   units <- ub$units
   row_unit <- ub$row_unit
   values <- data[[term]][units$value_row]
-  n_perm <- count_permutations(values, units$block)
+  enc <- encode_values(values, exchange)
+  n_perm <- count_permutations(values, units$block, exchange$type)
   check_permutation_space(n_perm, B, exchange, unit)
 
   response <- response_name(model)
@@ -115,9 +116,9 @@ perm_calibrate <- function(model,
     out <- with_seed(sim_seeds[i], {
       sim_data <- data
       sim_data[[response]] <- simulate_y()
-      perms <- generate_permutations(units$block, B)
-      calibrate_one(refit, sim_data, term, values, row_unit, perms, coef,
-                    df_resid, label)
+      relabels <- generate_relabels(enc$codes, units$block, exchange$type, B)
+      calibrate_one(refit, sim_data, term, enc$distinct, row_unit, relabels,
+                    coef, df_resid, label)
     })
     if (use_progress) p()
     out
@@ -154,8 +155,8 @@ perm_calibrate <- function(model,
 
 # One simulated data set: observed statistic, Wald p-value and permutation
 # p-value, with refits run sequentially (parallelism is over simulations).
-calibrate_one <- function(refit, sim_data, term, values, row_unit, perms,
-                          coef, df_resid, label) {
+calibrate_one <- function(refit, sim_data, term, distinct, row_unit,
+                          relabels, coef, df_resid, label) {
   obs <- safe_refit(refit, sim_data, coef)
   if (obs$status %in% c("failed", "nonconverged")) {
     return(list(p_perm = NA_real_, p_wald = NA_real_, B_used = 0))
@@ -166,9 +167,9 @@ calibrate_one <- function(refit, sim_data, term, values, row_unit, perms,
   } else {
     2 * stats::pnorm(-abs(t_obs))
   }
-  null <- vapply(seq_len(ncol(perms)), function(b) {
+  null <- vapply(seq_len(ncol(relabels)), function(b) {
     newdata <- sim_data
-    newdata[[term]] <- values[perms[, b]][row_unit]
+    newdata[[term]] <- distinct[relabels[, b]][row_unit]
     res <- safe_refit(refit, newdata, coef)
     if (res$status %in% c("failed", "nonconverged")) NA_real_ else res$stat[[1]]
   }, numeric(1))

@@ -73,3 +73,36 @@ test_that("the number of distinct permutations is counted", {
   n <- count_permutations(c("x", "x", "x", "y"), c("a", "a", "b", "b"))
   expect_equal(n$uninformative, 1)
 })
+
+test_that("sign-flipping swaps the two values for whole blocks", {
+  codes <- c(1L, 2L, 1L, 2L, 2L, 1L)
+  block <- c("a", "a", "b", "b", "c", "c")
+  set.seed(2)
+  relabels <- generate_relabels(codes, block, "signflip", 200)
+  for (b in seq_len(200)) {
+    for (blk in unique(block)) {
+      in_blk <- block == blk
+      same <- all(relabels[in_blk, b] == codes[in_blk])
+      flipped <- all(relabels[in_blk, b] == 3L - codes[in_blk])
+      expect_true(same || flipped)
+    }
+  }
+  flipped_a <- mean(relabels[1, ] != codes[1])
+  expect_gt(flipped_a, 0.35)
+  expect_lt(flipped_a, 0.65)
+})
+
+test_that("sign-flipping is described and validated", {
+  expect_output(print(exch_signflip("participant")), "sign-flipped")
+  expect_error(exch_signflip(), "block")
+  ex <- exch_signflip("participant")
+  expect_error(encode_values(c("a", "b", "c"), ex), "exactly two values")
+  enc <- encode_values(factor(c("B", "A", "B"), levels = c("A", "B")), ex)
+  expect_equal(enc$codes, c(2L, 1L, 2L))
+})
+
+test_that("sign-flipping counts 2^(blocks - 1) distinct relabellings", {
+  n <- count_permutations(rep(c("x", "y"), 5), rep(letters[1:5], each = 2),
+                          "signflip")
+  expect_equal(exp(n$log_n), 2^4)
+})

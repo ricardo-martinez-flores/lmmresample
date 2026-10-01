@@ -37,8 +37,8 @@
 #'   of `model` and a column of the data, constant within each `unit`.
 #' @param unit Name of the column identifying the units whose values of
 #'   `term` are permuted (e.g. `"trial"` or `"participant"`).
-#' @param exchange Exchangeability of units, created with [exch_within()] or
-#'   [exch_free()].
+#' @param exchange Exchangeability of units, created with [exch_within()],
+#'   [exch_signflip()] or [exch_free()].
 #' @param coef Name of the coefficient used as the test statistic. Needed only
 #'   when `term` corresponds to several coefficients (a factor with more than
 #'   two levels).
@@ -66,7 +66,8 @@
 #' *Statistical Applications in Genetics and Molecular Biology, 9*(1),
 #' Article 39. \doi{10.2202/1544-6115.1585}
 #'
-#' @seealso [exch_within()], [exch_free()]
+#' @seealso [exch_within()], [exch_signflip()], [exch_free()],
+#'   [perm_calibrate()]
 #'
 #' @examples
 #' d <- sim_blocks("within", level = "trial", n_participants = 12,
@@ -112,7 +113,8 @@ perm_test <- function(model,
   row_unit <- ub$row_unit
 
   values <- data[[term]][units$value_row]
-  n_perm <- count_permutations(values, units$block)
+  enc <- encode_values(values, exchange)
+  n_perm <- count_permutations(values, units$block, exchange$type)
   check_permutation_space(n_perm, B, exchange, unit)
 
   observed <- coef_stats(model, coef)[[1]]
@@ -121,11 +123,13 @@ perm_test <- function(model,
                     available (coefficient not estimable).")
   }
 
-  perms <- with_seed(seed, generate_permutations(units$block, B))
+  relabels <- with_seed(seed, generate_relabels(enc$codes, units$block,
+                                                 exchange$type, B))
+  distinct <- enc$distinct
   refit <- make_refitter(model)
   make_data <- function(b) {
     newdata <- data
-    newdata[[term]] <- values[perms[, b]][row_unit]
+    newdata[[term]] <- distinct[relabels[, b]][row_unit]
     newdata
   }
   res <- run_refits(refit, make_data, B, coef)
@@ -186,7 +190,14 @@ check_permutation_space <- function(n_perm, B, exchange, unit,
     cli::cli_abort(c(
       "No permutation can change the data.",
       "i" = "The tested variable takes a single value within every
-             {if (exchange$type == 'within') 'block' else 'stratum'}."
+             {if (exchange$type == 'free') 'stratum' else 'block'}."
+    ), call = call)
+  }
+  if (n_perm$uninformative > 0 && exchange$type == "signflip") {
+    cli::cli_abort(c(
+      "{n_perm$uninformative} of {n_perm$n_blocks} block{?s} contain{?s/} a
+       single value of the tested variable.",
+      "i" = "{.fn exch_signflip} requires both values in every block."
     ), call = call)
   }
   if (n_perm$uninformative > 0 && exchange$type == "within") {
@@ -199,7 +210,7 @@ check_permutation_space <- function(n_perm, B, exchange, unit,
   if (n_perm$log_n < log(B)) {
     total <- round(exp(n_perm$log_n))
     cli::cli_warn(c(
-      "Only {total} distinct permutation{?s} of {.field {unit}} exist{?s/},
+      "Only {total} distinct relabelling{?s} of {.field {unit}} exist{?s/},
        fewer than {.arg B} = {B}.",
       "i" = "Permutations are drawn with replacement; the test is valid but
              can be conservative. The smallest attainable p-value is about
@@ -217,8 +228,7 @@ print.lmmr_perm <- function(x, digits = 3, ...) {
   if (x$coef != x$term) cat(" (coefficient `", x$coef, "`)", sep = "")
   cat("\n\n")
   cat("Exchange:  ", format(x$exchange, unit = x$unit), " (",
-      x$n_units, " units", if (x$exchange$type == "within" ||
-                                !is.null(x$exchange$block)) {
+      x$n_units, " units", if (!is.null(x$exchange$block)) {
         paste0(" in ", x$n_blocks, " blocks")
       }, ")\n", sep = "")
   cat("Statistic: ", x$stat_label, " = ",

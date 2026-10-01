@@ -11,12 +11,25 @@
 #' * `exch_free()`: units are exchanged freely across the whole data set, or
 #'   within each level of `strata` if supplied. Use it for between-group
 #'   designs, where participants (`unit`) are permuted across groups.
+#' * `exch_signflip()`: the two levels of the tested variable are swapped for
+#'   all units of a randomly chosen subset of blocks, which reverses the sign
+#'   of each selected participant's effect. Use it in within-participant
+#'   designs when participants may differ in the size of their effect (random
+#'   slopes) and the hypothesis concerns the mean effect. It assumes that
+#'   individual effects are symmetrically distributed around the mean under
+#'   the null hypothesis.
+#'
+#' `exch_within()` is exact when the tested variable has no effect in any
+#' participant (sharp null). When participants differ in their effect, it can
+#' be liberal for the mean effect; `exch_signflip()` is then preferable. Use
+#' [perm_calibrate()] to check either choice for a given design.
 #'
 #' Each unit must belong to a single block (or stratum), and the permuted
 #' variable must be constant within each unit.
 #'
 #' @param block Name of the column defining the blocks within which units are
-#'   exchanged, typically the participant identifier.
+#'   exchanged (or whose labels are swapped), typically the participant
+#'   identifier.
 #' @param strata Optional name of a column defining strata within which units
 #'   are exchanged (e.g. recording site). `NULL` (the default) exchanges units
 #'   freely.
@@ -32,6 +45,10 @@
 #'
 #' # Between-group design stratified by site
 #' exch_free(strata = "site")
+#'
+#' # Within-participant design, inference on the mean effect when
+#' # participants differ in their effect
+#' exch_signflip("participant")
 #' @name exchange
 NULL
 
@@ -40,6 +57,13 @@ NULL
 exch_within <- function(block) {
   check_column_name(block, "block")
   structure(list(type = "within", block = block), class = "lmmr_exchange")
+}
+
+#' @rdname exchange
+#' @export
+exch_signflip <- function(block) {
+  check_column_name(block, "block")
+  structure(list(type = "signflip", block = block), class = "lmmr_exchange")
 }
 
 #' @rdname exchange
@@ -54,6 +78,8 @@ format.lmmr_exchange <- function(x, unit = NULL, ...) {
   what <- if (is.null(unit)) "units" else paste0("`", unit, "`")
   if (x$type == "within") {
     paste0(what, " permuted within `", x$block, "`")
+  } else if (x$type == "signflip") {
+    paste0("labels of ", what, " swapped (sign-flipped) by `", x$block, "`")
   } else if (is.null(x$block)) {
     paste0(what, " permuted freely")
   } else {
@@ -75,8 +101,8 @@ print.lmmr_exchange <- function(x, ...) {
 build_units <- function(data, term, unit, exchange, call = rlang::caller_env()) {
   if (!inherits(exchange, "lmmr_exchange")) {
     cli::cli_abort(
-      "{.arg exchange} must be created with {.fn exch_within} or
-       {.fn exch_free}.",
+      "{.arg exchange} must be created with {.fn exch_within},
+       {.fn exch_signflip} or {.fn exch_free}.",
       call = call
     )
   }
@@ -122,7 +148,7 @@ build_units <- function(data, term, unit, exchange, call = rlang::caller_env()) 
     n_blocks <- tapply(as.character(data[[blk]]), row_unit,
                        function(x) length(unique(x)))
     if (any(n_blocks > 1)) {
-      label <- if (exchange$type == "within") "block" else "stratum"
+      label <- if (exchange$type == "free") "stratum" else "block"
       cli::cli_abort(c(
         "Each {.field {unit}} must belong to a single {label}
          ({.field {blk}}).",
@@ -140,16 +166,37 @@ build_units <- function(data, term, unit, exchange, call = rlang::caller_env()) 
 
 # Number of distinct relabellings of the units (log scale), and number of
 # blocks in which the variable has a single value (no information).
-count_permutations <- function(values, block) {
+count_permutations <- function(values, block, type = "within") {
   groups <- split(values, block)
-  log_n <- sum(vapply(groups, function(v) {
-    counts <- table(as.character(v))
-    lfactorial(length(v)) - sum(lfactorial(counts))
-  }, numeric(1)))
   uninformative <- sum(vapply(groups, function(v) {
     length(unique(as.character(v))) < 2
   }, logical(1)))
+  log_n <- if (type == "signflip") {
+    (length(groups) - 1) * log(2)
+  } else {
+    sum(vapply(groups, function(v) {
+      counts <- table(as.character(v))
+      lfactorial(length(v)) - sum(lfactorial(counts))
+    }, numeric(1)))
+  }
   list(log_n = log_n, uninformative = uninformative, n_blocks = length(groups))
+}
+
+# Matrix of relabelled values, coded as indices into `levels(codes)`: column
+# b gives the value each unit receives in resample b.
+generate_relabels <- function(codes, block, type, B) {
+  if (type == "signflip") {
+    blocks <- unique(block)
+    idx <- match(block, blocks)
+    out <- matrix(codes, nrow = length(codes), ncol = B)
+    flips <- matrix(stats::runif(length(blocks) * B) < 0.5,
+                    nrow = length(blocks))
+    swap <- flips[idx, , drop = FALSE]
+    out[swap] <- 3L - out[swap]
+    return(out)
+  }
+  perms <- generate_permutations(block, B)
+  matrix(codes[perms], nrow = length(codes))
 }
 
 # Matrix of permuted unit indices: column b gives, for each unit, the unit
@@ -164,6 +211,19 @@ generate_permutations <- function(block, B) {
     }
   }
   perms
+}
+
+# Encode unit values as integer codes into a vector of distinct values.
+encode_values <- function(values, exchange, call = rlang::caller_env()) {
+  distinct <- unique(values)
+  if (is.factor(distinct)) distinct <- distinct[order(as.integer(distinct))]
+  if (exchange$type == "signflip" && length(distinct) != 2) {
+    cli::cli_abort(c(
+      "{.fn exch_signflip} requires a variable with exactly two values.",
+      "x" = "The tested variable has {length(distinct)} distinct values."
+    ), call = call)
+  }
+  list(codes = match(values, distinct), distinct = distinct)
 }
 
 check_column_name <- function(x, arg, call = rlang::caller_env()) {

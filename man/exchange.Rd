@@ -3,16 +3,20 @@
 \name{exchange}
 \alias{exchange}
 \alias{exch_within}
+\alias{exch_signflip}
 \alias{exch_free}
 \title{Declare exchangeability for permutation tests}
 \usage{
 exch_within(block)
 
+exch_signflip(block)
+
 exch_free(strata = NULL)
 }
 \arguments{
 \item{block}{Name of the column defining the blocks within which units are
-exchanged, typically the participant identifier.}
+exchanged (or whose labels are swapped), typically the participant
+identifier.}
 
 \item{strata}{Optional name of a column defining strata within which units
 are exchanged (e.g. recording site). \code{NULL} (the default) exchanges units
@@ -35,7 +39,19 @@ permuted within each participant (\code{block}).
 \item \code{exch_free()}: units are exchanged freely across the whole data set, or
 within each level of \code{strata} if supplied. Use it for between-group
 designs, where participants (\code{unit}) are permuted across groups.
+\item \code{exch_signflip()}: the two levels of the tested variable are swapped for
+all units of a randomly chosen subset of blocks, which reverses the sign
+of each selected participant's effect. Use it in within-participant
+designs when participants may differ in the size of their effect (random
+slopes) and the hypothesis concerns the mean effect. It assumes that
+individual effects are symmetrically distributed around the mean under
+the null hypothesis.
 }
+
+\code{exch_within()} is exact when the tested variable has no effect in any
+participant (sharp null). When participants differ in their effect, it can
+be liberal for the mean effect; \code{exch_signflip()} is then preferable. Use
+\code{\link[=perm_calibrate]{perm_calibrate()}} to check either choice for a given design.
 
 Each unit must belong to a single block (or stratum), and the permuted
 variable must be constant within each unit.
@@ -49,4 +65,8 @@ exch_free()
 
 # Between-group design stratified by site
 exch_free(strata = "site")
+
+# Within-participant design, inference on the mean effect when
+# participants differ in their effect
+exch_signflip("participant")
 }

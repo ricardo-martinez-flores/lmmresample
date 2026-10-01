@@ -150,7 +150,7 @@ test_that("small permutation spaces trigger a warning", {
   m <- lm(y ~ group, data = d)
   expect_warning(
     perm_test(m, "group", "participant", exch_free(), B = 99, seed = 1),
-    "distinct permutations"
+    "distinct relabellings"
   )
 })
 
@@ -209,4 +209,20 @@ test_that("type I error is controlled with autocorrelated time series", {
   }
   expect_gt(mean(wald), 0.3)
   expect_lt(mean(perm), 0.15)
+})
+
+test_that("perm_test supports sign-flipping within participants", {
+  d <- within_trials(effect = 0.5)
+  m <- lme4::lmer(y ~ condition + (1 | participant), data = d)
+  res <- perm_test(m, "condition", "trial", exch_signflip("participant"),
+                   B = 49, seed = 1)
+  expect_s3_class(res, "lmmr_perm")
+  expect_output(print(res), "sign-flipped")
+
+  d$condition[d$participant == levels(d$participant)[1]] <- "A"
+  m2 <- lm(y ~ condition + participant, data = d)
+  expect_error(
+    perm_test(m2, "condition", "trial", exch_signflip("participant"), B = 9),
+    "both values in every block"
+  )
 })

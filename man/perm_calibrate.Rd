@@ -31,8 +31,8 @@ of \code{model} and a column of the data, constant within each \code{unit}.}
 \item{unit}{Name of the column identifying the units whose values of
 \code{term} are permuted (e.g. \code{"trial"} or \code{"participant"}).}
 
-\item{exchange}{Exchangeability of units, created with \code{\link[=exch_within]{exch_within()}} or
-\code{\link[=exch_free]{exch_free()}}.}
+\item{exchange}{Exchangeability of units, created with \code{\link[=exch_within]{exch_within()}},
+\code{\link[=exch_signflip]{exch_signflip()}} or \code{\link[=exch_free]{exch_free()}}.}
 
 \item{coef}{Name of the coefficient used as the test statistic. Needed only
 when \code{term} corresponds to several coefficients (a factor with more than

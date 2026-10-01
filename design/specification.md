@@ -97,7 +97,7 @@ autocompletion.
 | Diagnostics | `diag_loso()` | Leave-one-subject-out influence |
 | | `diag_agreement()` | Model coefficient vs. mean participant-level difference |
 | | `diag_acf()` | Within-series autocorrelation of residuals |
-| Exchangeability | `exch_within()`, `exch_free()` | Declare what is exchanged |
+| Exchangeability | `exch_within()`, `exch_signflip()`, `exch_free()` | Declare what is exchanged |
 | Simulation | `sim_blocks()` | Simulate block-structured data for examples, power and calibration |
 
 Note: earlier drafts used `perm_lmer()`, `boot_lmer()`, `maxt_lmer()` and
@@ -110,6 +110,7 @@ now supported.
 
 ```r
 exch_within(block)            # permute units within each level of `block`
+exch_signflip(block)          # swap the two levels for whole blocks at random
 exch_free(strata = NULL)      # permute units freely, optionally within strata
 ```
 
@@ -118,10 +119,18 @@ cover the standard designs:
 
 | Design | Tested variable | `unit` | `exchange` |
 |---|---|---|---|
-| Within-participant | condition | `"trial"` | `exch_within("participant")` |
+| Within-participant (sharp null) | condition | `"trial"` | `exch_within("participant")` |
+| Within-participant, mean effect with heterogeneous participants | condition | `"trial"` | `exch_signflip("participant")` |
 | Between-group | group | `"participant"` | `exch_free()` |
 | Between-group, stratified | group | `"participant"` | `exch_free(strata = "site")` |
 | Repeated measures (participant × condition rows) | condition | `"row"` or condition-level id | `exch_within("participant")` |
+
+`exch_signflip()` was added after calibration showed that within-participant
+permutation is liberal for the mean effect when participants differ in their
+effect (random slopes): 9.1% rejections at alpha = 0.05 in 200 simulations.
+Swapping the two levels for all trials of randomly chosen participants
+reverses the sign of their individual effects, which is valid under the mean
+null if individual effects are symmetric around zero.
 
 Validation performed before any refit:
 

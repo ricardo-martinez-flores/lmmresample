@@ -13,8 +13,11 @@
   singular refits. Results have `print()`, `summary()`, `tidy()` and `plot()`
   methods, including a trace plot of the running p-value.
 
-* New `exch_within()` and `exch_free()` declare which units are exchangeable:
-  within blocks (e.g. trials within participants), freely, or within strata.
+* New `exch_within()`, `exch_signflip()` and `exch_free()` declare which units
+  are exchangeable: within blocks (e.g. trials within participants), by
+  swapping the two levels of the tested variable for whole blocks
+  (sign-flipping, for the mean effect when participants differ in their
+  effect), freely, or within strata.
 
 * New `sim_blocks()` simulates block-structured repeated measurements (full
   time series, trial-level or participant-level data) for within-participant,
