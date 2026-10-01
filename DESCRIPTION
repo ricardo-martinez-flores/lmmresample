@@ -8,12 +8,16 @@ Authors@R: c(
     person("Hans", "Supèr", role = "aut")
   )
 Description: Permutation and bootstrap inference for linear and generalized
-    linear mixed-effects models fitted to densely sampled physiological time
-    series such as pupillometry or EEG. Provides trial- and participant-level
-    permutation under user-declared exchangeability, simulation-based
-    calibration of the permutation null, family-wise error control with the
-    max-t procedure, cluster bootstrap confidence intervals (percentile and
-    bias-corrected and accelerated), and leave-one-subject-out diagnostics.
+    linear (mixed-effects) models fitted to block-structured repeated
+    measurements, such as densely sampled physiological time series
+    (pupillometry, eye movements, EEG, fNIRS, heart rate, electrodermal
+    activity, electromyography) or features extracted from them per trial or
+    per participant. Resampling operates on whole trials or participants, so
+    dependence within blocks is preserved. Provides permutation tests under
+    user-declared exchangeability, simulation-based calibration of the
+    permutation null, family-wise error control with the max-t procedure,
+    bootstrap confidence intervals (percentile and bias-corrected and
+    accelerated) and leave-one-subject-out diagnostics.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
