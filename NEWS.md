@@ -1,5 +1,15 @@
 # lmmresample 0.0.0.9000
 
+* New `perm_test()` tests a fixed-effect term by permuting it across whole
+  units (trials or participants) and refitting the full model. Supports
+  `lm()`, `glm()`, `lme4::lmer()` and `lme4::glmer()` models, runs in parallel
+  through the future framework, and records failed, non-convergent and
+  singular refits. Results have `print()`, `summary()`, `tidy()` and `plot()`
+  methods, including a trace plot of the running p-value.
+
+* New `exch_within()` and `exch_free()` declare which units are exchangeable:
+  within blocks (e.g. trials within participants), freely, or within strata.
+
 * New `sim_blocks()` simulates block-structured repeated measurements (full
   time series, trial-level or participant-level data) for within-participant,
   between-group and mixed designs, with known effects, random intercepts and

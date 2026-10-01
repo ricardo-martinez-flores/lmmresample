@@ -97,7 +97,7 @@ autocompletion.
 | Diagnostics | `diag_loso()` | Leave-one-subject-out influence |
 | | `diag_agreement()` | Model coefficient vs. mean participant-level difference |
 | | `diag_acf()` | Within-series autocorrelation of residuals |
-| Exchangeability | `exch_within()`, `exch_free()`, `exch_custom()` | Declare what is exchanged |
+| Exchangeability | `exch_within()`, `exch_free()` | Declare what is exchanged |
 | Simulation | `sim_blocks()` | Simulate block-structured data for examples, power and calibration |
 
 Note: earlier drafts used `perm_lmer()`, `boot_lmer()`, `maxt_lmer()` and
@@ -111,7 +111,6 @@ now supported.
 ```r
 exch_within(block)            # permute units within each level of `block`
 exch_free(strata = NULL)      # permute units freely, optionally within strata
-exch_custom(how)              # any permute::how() specification (advanced)
 ```
 
 Together with `unit` (the column identifying the resampled block), these
@@ -457,9 +456,9 @@ perm_test(m, term = "condition", unit = "trial",
 
 ## 9. Dependencies
 
-- Imports: `stats`, `lme4`, `future.apply`, `cli`, `rlang`.
-- Suggests: `ggplot2`, `progressr`, `permute` (for `exch_custom()`),
-  `lmeresampler` (comparisons in tests), `testthat`, `knitr`, `rmarkdown`.
+- Imports: `stats`, `lme4`, `future.apply`, `generics`, `cli`, `rlang`.
+- Suggests: `future`, `ggplot2`, `progressr`, `testthat`, `knitr`,
+  `rmarkdown`.
 
 ---
 
