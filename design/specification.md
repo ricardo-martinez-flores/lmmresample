@@ -268,6 +268,10 @@ confint(object, type = c("percentile", "bca", "basic"), level = 0.95)
   out). These refits are the same ones used by `diag_loso()` and are reused
   when available.
 - `terms`: fixed effects to report; all by default.
+- Case resampling requires nested random effects. If the model contains
+  crossed random effects (e.g. participants and items), `boot_ci()` warns that
+  the intervals reflect sampling of clusters only, and points to
+  `lme4::bootMer()` as an alternative.
 
 Returns `lmmr_boot`.
 
@@ -461,11 +465,6 @@ Everything specified in sections 3–8.
 - `glmmTMB` models.
 
 **Not planned**
-- Crossed random effects (e.g. participants × items) in the bootstrap.
-  Permutation supports crossed designs through exchangeability within
-  participants. `boot_ci()` detects crossed random effects and warns that
-  intervals reflect participant sampling only, not item sampling, pointing to
-  `lme4::bootMer()` (parametric bootstrap) as an alternative.
 - Temporal block bootstrap within a single long series without block
   structure.
 
