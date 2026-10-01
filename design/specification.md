@@ -148,7 +148,7 @@ perm_test(
   exchange,
   coef = NULL,
   alternative = c("two.sided", "greater", "less"),
-  B = 1999,
+  B = 4999,
   seed = NULL,
   data = NULL
 )
@@ -180,7 +180,7 @@ perm_maxt(
   unit,
   exchange,
   method = c("single-step", "step-down"),
-  B = 1999,
+  B = 4999,
   seed = NULL
 )
 
@@ -209,7 +209,7 @@ perm_calibrate(
   unit,
   exchange,
   coef = NULL,
-  null = c("sharp", "mean"),
+  null = c("mean", "sharp"),
   ar1 = NULL,
   series = NULL,
   time = NULL,
@@ -224,12 +224,13 @@ Simulates data under H0 from the user's own **reduced model** (the model with
 `term` removed), runs `perm_test()` on each simulated dataset and reports the
 distribution of p-values.
 
+- `null = "mean"` (default): the average effect is zero but participants vary
+  around it (random slope variance for `term` kept). This is the hypothesis
+  usually claimed in applied work ("the mean effect differs from zero") and the
+  one under which a permutation test can fail, so it is the informative check.
 - `null = "sharp"`: the effect of `term` is zero for every participant (random
-  slopes for `term` are also removed). This is the null hypothesis that a
-  permutation test is exact for.
-- `null = "mean"`: the average effect is zero but participants vary around it
-  (random slope variance kept). Shows how the test behaves under the weaker,
-  often more realistic null.
+  slopes for `term` are also removed). The permutation test is exact under this
+  null by construction; useful as a reference.
 - `ar1`: optional AR(1) coefficient for the residuals within each `series`
   ordered by `time`. Can be a number or the output of `diag_acf()`.
 
@@ -249,7 +250,7 @@ boot_ci(
   ci = c("percentile", "bca", "basic"),
   level = 0.95,
   terms = NULL,
-  B = 1999,
+  B = 4999,
   seed = NULL,
   data = NULL
 )
@@ -315,14 +316,25 @@ sim_blocks(
   n_participants = 30,
   n_trials = 40,
   n_time = 100,
-  effect = 0,
+  sampling_rate = 50,
+  effect_condition = 0,
+  effect_group = 0,
+  effect_interaction = 0,
+  sd_participant = 1,
+  sd_slope = 0,
+  sd_trial = 0.5,
+  sd_residual = 1,
   ar1 = 0.9,
-  ...
+  seed = NULL
 )
 ```
 
-Generates block-structured data with known effects. Used in examples, tests
-and vignettes, and useful to users for power analysis.
+Generates block-structured data with known effects: a common response curve,
+participant random intercepts and condition slopes, trial random intercepts
+and AR(1) residuals within trials. Returns the full time series (`y` per
+sample), one row per trial (`y` = trial mean, `peak` = trial maximum) or one
+row per participant (and condition). Used in examples, tests and vignettes,
+and useful to users for power analysis.
 
 ---
 
@@ -355,6 +367,10 @@ packages such as `performance` and `DHARMa`.
 - **Reproducibility.** `seed` sets the RNG for the whole call, including
   parallel workers (`future.seed`). The same seed gives the same result with
   any `future` plan.
+- **Number of resamples.** `B = 4999` by default, in line with common
+  practice (e.g. 5000 permutations) and adequate for BCa intervals. Examples and
+  vignettes use smaller values for speed and say so. `print()` flags results
+  with `B < 1000` as exploratory.
 - **Progress.** Reported through `progressr`, which the user can enable or
   silence.
 - **Refit failures.** Non-convergent and singular refits are counted per
@@ -375,8 +391,8 @@ library(lme4)
 ### 8.1 Full time series, within-participant condition
 
 ```r
-d <- sim_blocks("within", level = "timeseries", effect = 0.1)
-m <- lmer(pupil ~ condition + time + (1 + condition | participant), data = d)
+d <- sim_blocks("within", level = "timeseries", effect_condition = 0.1)
+m <- lmer(y ~ condition + time + (1 + condition | participant), data = d)
 
 diag_acf(m, series = "trial", time = "time")
 diag_agreement(m, term = "condition", cluster = "participant")
@@ -397,12 +413,12 @@ plot(p); plot(b)
 
 ```r
 d <- sim_blocks("within", level = "trial")
-m_peak    <- lmer(peak    ~ condition + (1 | participant), data = d)
-m_latency <- lmer(latency ~ condition + (1 | participant), data = d)
+m_mean <- lmer(y    ~ condition + (1 | participant), data = d)
+m_peak <- lmer(peak ~ condition + (1 | participant), data = d)
 
 perm_maxt(
-  peak    = perm_spec(m_peak,    "condition"),
-  latency = perm_spec(m_latency, "condition"),
+  mean = perm_spec(m_mean, "condition"),
+  peak = perm_spec(m_peak, "condition"),
   unit = "trial", exchange = exch_within("participant")
 )
 ```
@@ -411,7 +427,7 @@ perm_maxt(
 
 ```r
 d <- sim_blocks("between", level = "participant")
-m <- lm(feature ~ group + age, data = d)
+m <- lm(y ~ group, data = d)
 
 perm_test(m, term = "group", unit = "participant", exchange = exch_free())
 boot_ci(m, cluster = "participant", ci = "percentile")
@@ -421,7 +437,7 @@ boot_ci(m, cluster = "participant", ci = "percentile")
 
 ```r
 d <- sim_blocks("mixed", level = "timeseries")
-m <- lmer(pupil ~ group * condition + time + (1 + condition | participant),
+m <- lmer(y ~ group + condition + time + (1 + condition | participant),
           data = d)
 
 perm_test(m, term = "group", unit = "participant", exchange = exch_free())
@@ -470,16 +486,13 @@ Everything specified in sections 3–8.
 
 ---
 
-## 11. Open decisions
+## 11. Decisions
 
-1. ~~Interactions in mixed designs.~~ Resolved: tested in v0.2 through
-   Freedman–Lane. In v0.1, `perm_test()` stops with an informative message when
-   `term` is involved in an interaction.
-2. **Default `null` in `perm_calibrate()`.** `"sharp"` matches what the
-   permutation test guarantees; `"mean"` is closer to typical data and more
-   informative about real-world behaviour.
-3. **Default `B`.** 1999 for tests and intervals (adequate for α = 0.05 and
-   BCa) versus 4999 (more stable BCa endpoints at higher cost).
-4. **Wild bootstrap implementation.** Build on `lmeresampler` (fewer lines,
-   one more dependency) or implement directly (full control, BCa compatibility).
-5. **Output class prefix.** `lmmr_*` is short; `lmmresample_*` is explicit.
+1. Interactions in mixed designs: tested in v0.2 through Freedman–Lane. In
+   v0.1, `perm_test()` stops with an informative message when `term` is
+   involved in an interaction.
+2. Default null in `perm_calibrate()`: `"mean"`.
+3. Default number of resamples: `B = 4999`.
+4. Wild bootstrap: implemented in the package (no dependency on
+   `lmeresampler`), so it is compatible with all interval types.
+5. Class prefix of result objects: `lmmr_`.
