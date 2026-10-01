@@ -460,12 +460,12 @@ Everything specified in sections 3–8.
   interactions, in `perm_test()` and `perm_maxt()`.
 - `glmmTMB` models.
 
-**v0.3 — crossed designs**
+**Not planned**
 - Crossed random effects (e.g. participants × items) in the bootstrap.
-  Permutation already supports crossed designs through exchangeability within
-  participants.
-
-**Out of scope**
+  Permutation supports crossed designs through exchangeability within
+  participants. `boot_ci()` detects crossed random effects and warns that
+  intervals reflect participant sampling only, not item sampling, pointing to
+  `lme4::bootMer()` (parametric bootstrap) as an alternative.
 - Temporal block bootstrap within a single long series without block
   structure.
 
