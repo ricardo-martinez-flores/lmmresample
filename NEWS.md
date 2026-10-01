@@ -1,5 +1,11 @@
 # lmmresample 0.0.0.9000
 
+* New `perm_calibrate()` checks the type I error of a permutation test for the
+  user's own design by simulating data under the null from the fitted model
+  (mean or sharp null, optional AR(1) residuals within series), and compares
+  it with the model's Wald test. Includes p-value calibration and
+  rejection-rate plots.
+
 * New `perm_test()` tests a fixed-effect term by permuting it across whole
   units (trials or participants) and refitting the full model. Supports
   `lm()`, `glm()`, `lme4::lmer()` and `lme4::glmer()` models, runs in parallel

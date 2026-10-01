@@ -29,6 +29,7 @@ Imports:
     future.apply,
     generics,
     lme4,
+    Matrix,
     rlang (>= 1.0.0),
     stats
 Suggests:
