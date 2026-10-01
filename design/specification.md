@@ -443,22 +443,39 @@ perm_test(m, term = "condition", unit = "trial",
 
 ---
 
-## 10. Out of scope for v0.1
+## 10. Roadmap
 
-- Freedman–Lane and ter Braak permutation with nuisance covariates.
-- Crossed random effects (e.g. participants × items) in the bootstrap.
-- F / likelihood-ratio statistics for multi-level factors.
+Development milestones. The first CRAN release will be v0.2, which is also the
+version described in the methods paper. v0.1 is an internal milestone, tagged
+on GitHub only.
+
+**v0.1 — core (internal milestone)**
+Everything specified in sections 3–8.
+
+**v0.2 — covariates, interactions and more models (first CRAN release; paper)**
+- Freedman–Lane and ter Braak permutation with nuisance covariates, which also
+  provides valid tests of interactions (e.g. `group × condition` in mixed
+  designs). Calibration is mandatory in the documentation of these methods.
+- F / likelihood-ratio statistics for multi-level factors and their
+  interactions, in `perm_test()` and `perm_maxt()`.
 - `glmmTMB` models.
-- Temporal block bootstrap within a single long series.
+
+**v0.3 — crossed designs**
+- Crossed random effects (e.g. participants × items) in the bootstrap.
+  Permutation already supports crossed designs through exchangeability within
+  participants.
+
+**Out of scope**
+- Temporal block bootstrap within a single long series without block
+  structure.
 
 ---
 
 ## 11. Open decisions
 
-1. **Interactions in mixed designs.** Within-participant permutation of
-   `condition` does not test the `group × condition` interaction in isolation.
-   Options: (a) leave interactions to v0.2 with Freedman–Lane; (b) allow it in
-   v0.1 with mandatory calibration and an explicit warning.
+1. ~~Interactions in mixed designs.~~ Resolved: tested in v0.2 through
+   Freedman–Lane. In v0.1, `perm_test()` stops with an informative message when
+   `term` is involved in an interaction.
 2. **Default `null` in `perm_calibrate()`.** `"sharp"` matches what the
    permutation test guarantees; `"mean"` is closer to typical data and more
    informative about real-world behaviour.

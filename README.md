@@ -46,9 +46,10 @@ extracted per trial, or one value per participant. Supported models are
 - Parallel computation through the `future` framework, with reproducible
   seeds.
 
-Later versions: Freedman–Lane / ter Braak permutation with covariates, crossed
-random-effects designs, F/likelihood-ratio statistics for multi-level factors,
-and `glmmTMB` models.
+Planned for version 0.2: Freedman–Lane / ter Braak permutation with
+covariates (including tests of interactions), F / likelihood-ratio statistics
+for multi-level factors, and `glmmTMB` models. Crossed random-effects designs
+in the bootstrap are planned for a later version.
 
 ## Installation
 
