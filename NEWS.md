@@ -1,5 +1,10 @@
 # lmmresample 0.0.0.9000
 
+* New diagnostics: `diag_acf()` estimates the autocorrelation of residuals
+  within series (its lag-1 value can be passed to `perm_calibrate()`), and
+  `diag_timecourse()` shows mean residuals over time by condition to detect a
+  misspecified time course or a missing condition by time interaction.
+
 * The package now supports linear models only (`lm()` and `lme4::lmer()`).
   Generalized linear (mixed) models are refused with an informative message,
   because residual permutation does not apply to them.
