@@ -192,7 +192,8 @@ perm_maxt(
   ...,                        # named perm_spec() objects
   unit,
   exchange,
-  method = c("step-down", "single-step"),
+  method = c("auto", "relabel", "freedman-lane"),
+  adjust = c("step-down", "single-step"),
   B = 4999,
   seed = NULL
 )

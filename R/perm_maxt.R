@@ -13,40 +13,55 @@
 perm_spec <- function(model, term, coef = NULL, data = NULL) {
   check_model(model)
   check_column_name(term, "term")
-  if (!is.null(coef)) check_column_name(coef, "coef")
+  if (!is.null(coef) && (!is.character(coef) || anyNA(coef))) {
+    cli::cli_abort("{.arg coef} must be a character vector of coefficient
+                    names.")
+  }
   data <- model_data(model, data)
-  coef <- resolve_coef(model, term, coef)
+  term_info(model, term)
   structure(list(model = model, term = term, coef = coef, data = data),
             class = "lmmr_spec")
 }
 
 #' @export
 print.lmmr_spec <- function(x, ...) {
-  cat("<test specification> `", x$coef, "` in a ", class(x$model)[1],
+  cat("<test specification> `", x$term, "` in a ", class(x$model)[1],
       " model of `", deparse(stats::formula(x$model)[[2]]), "`\n", sep = "")
   invisible(x)
 }
 
 #' Family-wise permutation tests with the max-t procedure
 #'
-#' Tests the same variable in several models at once, for example one model
-#' per feature extracted from the same trials, and controls the family-wise
-#' error rate with the max-t procedure of Westfall and Young (1993). In each
-#' permutation the same relabelling of units is applied to every model, so
-#' the dependence among the test statistics is preserved and the correction
-#' is less conservative than Bonferroni when the statistics are correlated.
+#' Tests several model terms at once, for example the same condition effect
+#' in one model per feature extracted from the same trials, and controls the
+#' family-wise error rate with the max-t procedure of Westfall and Young
+#' (1993). In each permutation the same resampling of units is applied to
+#' every model, so the dependence among the test statistics is preserved and
+#' the correction is less conservative than Bonferroni when the statistics
+#' are correlated.
 #'
 #' @details
-#' All specifications must test the same variable (`term`) in data sets that
-#' share the units and their values of `term`, as when several outcome
-#' variables are measured on the same trials. For each permutation, the
-#' absolute Wald statistics of all models are computed and their maximum is
-#' recorded.
+#' All models must be fitted to data that share the resampled units (e.g.
+#' the same trials of the same participants). Two resampling methods are
+#' available, as in [perm_test()]:
 #'
-#' * `method = "single-step"`: the adjusted p-value of each test is the
+#' * `"relabel"`: the values of the tested variable are reassigned among
+#'   units. All specifications must then test the same variable, with the
+#'   same values in every data set.
+#' * `"freedman-lane"`: the residuals of each reduced model are permuted or
+#'   sign-flipped with the same draw for every model. Specifications may test
+#'   different terms, including interactions and effects adjusted for
+#'   covariates.
+#'
+#' With `method = "auto"`, relabelling is used when it is valid for every
+#' specification, and Freedman-Lane otherwise. Every tested term must have a
+#' single coefficient, so that the absolute *t* statistics are comparable
+#' across tests.
+#'
+#' * `adjust = "single-step"`: the adjusted p-value of each test is the
 #'   proportion of permutations whose maximum statistic is at least as large
 #'   as the observed statistic of that test.
-#' * `method = "step-down"`: tests are ordered by decreasing observed
+#' * `adjust = "step-down"`: tests are ordered by decreasing observed
 #'   statistic and the maximum is taken only over the tests not yet rejected,
 #'   with monotonicity enforced. It is uniformly more powerful than the
 #'   single-step procedure and controls the family-wise error rate under the
@@ -59,7 +74,9 @@ print.lmmr_spec <- function(x, ...) {
 #' @param ... Named test specifications created with [perm_spec()]. Names are
 #'   used to label the tests.
 #' @param unit,exchange,B,seed As in [perm_test()].
-#' @param method `"step-down"` (default) or `"single-step"`. See Details.
+#' @param method Resampling method: `"auto"`, `"relabel"` or
+#'   `"freedman-lane"`. See Details.
+#' @param adjust `"step-down"` (default) or `"single-step"`. See Details.
 #'
 #' @return An object of class `lmmr_maxt` with methods for [print()],
 #'   [tidy()][generics::tidy] and [plot()]. Its element `results` is a data
@@ -95,58 +112,81 @@ print.lmmr_spec <- function(x, ...) {
 perm_maxt <- function(...,
                       unit,
                       exchange,
-                      method = c("step-down", "single-step"),
+                      method = c("auto", "relabel", "freedman-lane"),
+                      adjust = c("step-down", "single-step"),
                       B = 4999,
                       seed = NULL) {
   call <- match.call()
   method <- match.arg(method)
+  adjust <- match.arg(adjust)
   check_count(B, "B", min = 1)
   specs <- list(...)
   check_specs(specs)
-  term <- specs[[1]]$term
+  k <- length(specs)
 
-  # Units of the first specification define the common relabelling
-  ub <- lapply(specs, function(s) build_units(s$data, term, unit, exchange))
-  ref <- ub[[1]]$units
-  values <- specs[[1]]$data[[term]][ref$value_row]
-  for (j in seq_along(specs)[-1]) {
-    check_same_units(ref, values, ub[[j]]$units,
-                     specs[[j]]$data[[term]][ub[[j]]$units$value_row],
-                     names(specs)[j])
+  tests <- lapply(specs, function(s) {
+    resolve_test(s$model, s$data, s$term, s$coef, method)
+  })
+  methods <- vapply(tests, function(t) t$method, character(1))
+  if (method == "auto" && length(unique(methods)) > 1) {
+    tests <- lapply(specs, function(s) {
+      resolve_test(s$model, s$data, s$term, s$coef, "freedman-lane")
+    })
   }
-  enc <- encode_values(values, exchange)
-  n_perm <- count_permutations(values, ref$block, exchange$type)
-  check_permutation_space(n_perm, B, exchange, unit)
+  resampling <- tests[[1]]$method
+  if (any(vapply(tests, function(t) t$type != "t", logical(1)))) {
+    cli::cli_abort(c(
+      "Every tested term must have a single coefficient.",
+      "i" = "Test terms with several coefficients separately with
+             {.fn perm_test}, or choose one coefficient with {.arg coef} in
+             {.fn perm_spec}."
+    ))
+  }
+  if (resampling == "relabel") {
+    terms <- unique(vapply(specs, function(s) s$term, character(1)))
+    if (length(terms) > 1) {
+      cli::cli_abort(c(
+        "With relabelling, all specifications must test the same variable.",
+        "x" = "Found {.val {terms}}.",
+        "i" = "Use {.code method = \"freedman-lane\"} to test different
+               terms."
+      ))
+    }
+  }
 
-  # Map each specification's rows to the common unit order
-  row_map <- lapply(ub, function(u) match(u$units$unit, ref$unit)[u$row_unit])
+  engines <- lapply(seq_len(k), function(j) {
+    build_engine(specs[[j]]$model, specs[[j]]$data, specs[[j]]$term,
+                 tests[[j]], unit, exchange)
+  })
+  ref <- engines[[1]]
+  check_permutation_space(ref$space, B, exchange, unit)
+  for (j in seq_len(k)[-1]) {
+    check_same_engine_units(ref, engines[[j]], names(specs)[j], resampling)
+  }
 
-  observed <- vapply(specs, function(s) abs(coef_stats(s$model, s$coef)[[1]]),
-                     numeric(1))
+  observed <- vapply(seq_len(k), function(j) {
+    abs(coef_stats(specs[[j]]$model, tests[[j]]$coefs)[[1]])
+  }, numeric(1))
   if (anyNA(observed)) {
     cli::cli_abort("The observed statistic is not available for
                     {.val {names(specs)[is.na(observed)]}}.")
   }
 
-  relabels <- with_seed(seed, generate_relabels(enc$codes, ref$block,
-                                                 exchange$type, B))
-  distinct <- enc$distinct
+  draws_ref <- with_seed(seed, ref$draw(B))
+  draws <- lapply(engines, function(e) e$translate(draws_ref, ref))
   refits <- lapply(specs, function(s) make_refitter(s$model))
 
   use_progress <- requireNamespace("progressr", quietly = TRUE)
   if (use_progress) p <- progressr::progressor(steps = B)
   results <- future.apply::future_lapply(seq_len(B), function(b) {
-    new_values <- distinct[relabels[, b]]
-    out <- lapply(seq_along(specs), function(j) {
-      newdata <- specs[[j]]$data
-      newdata[[term]] <- new_values[row_map[[j]]]
-      safe_refit(refits[[j]], newdata, specs[[j]]$coef)
+    out <- lapply(seq_len(k), function(j) {
+      safe_refit(refits[[j]], engines[[j]]$make_data(draws[[j]], b),
+                 tests[[j]]$coefs)
     })
     if (use_progress) p()
     out
   }, future.seed = FALSE)
 
-  k <- length(specs)
   null <- matrix(NA_real_, nrow = B, ncol = k,
                  dimnames = list(NULL, names(specs)))
   status <- matrix(NA_character_, nrow = B, ncol = k,
@@ -173,13 +213,14 @@ perm_maxt <- function(...,
   p_unadj <- vapply(seq_len(k), function(j) {
     perm_pvalue(observed[j], null_used[, j], "two.sided")
   }, numeric(1))
-  p_adj <- maxt_adjust(observed, null_used, method)
+  p_adj <- maxt_adjust(observed, null_used, adjust)
 
   structure(
     list(
       results = data.frame(
         test = names(specs),
-        coef = vapply(specs, function(s) s$coef, character(1)),
+        term = vapply(specs, function(s) s$term, character(1)),
+        coef = vapply(tests, function(t) t$coefs, character(1)),
         statistic = unname(observed),
         p.value = p_unadj,
         p.adjusted = p_adj,
@@ -187,13 +228,15 @@ perm_maxt <- function(...,
       ),
       null = null,
       status = status,
-      term = term,
+      term = paste(unique(vapply(specs, function(s) s$term, character(1))),
+                   collapse = ", "),
       unit = unit,
       exchange = exchange,
-      method = method,
-      stat_label = stat_label(specs[[1]]$model),
-      n_units = nrow(ref),
-      n_blocks = n_perm$n_blocks,
+      method = resampling,
+      adjust = adjust,
+      stat_label = "t",
+      n_units = ref$n_units,
+      n_blocks = ref$space$n_blocks,
       B = B,
       B_used = sum(complete),
       seed = seed,
@@ -201,6 +244,29 @@ perm_maxt <- function(...,
     ),
     class = "lmmr_maxt"
   )
+}
+
+# All engines in a family must resample the same units with the same blocks.
+check_same_engine_units <- function(ref, engine, name, resampling,
+                                    call = rlang::caller_env()) {
+  if (!setequal(ref$unit_ids, engine$unit_ids)) {
+    cli::cli_abort(c(
+      "Specification {.val {name}} does not have the same units as the
+       first one.",
+      "i" = "All models must be fitted to the same trials or participants."
+    ), call = call)
+  }
+  idx <- match(ref$unit_ids, engine$unit_ids)
+  if (!identical(ref$unit_blocks, engine$unit_blocks[idx])) {
+    cli::cli_abort("Specification {.val {name}} assigns different blocks to
+                    the same units.", call = call)
+  }
+  if (resampling == "relabel" &&
+      !identical(ref$unit_values, engine$unit_values[idx])) {
+    cli::cli_abort("Specification {.val {name}} assigns different values of
+                    the tested variable to the same units.", call = call)
+  }
+  invisible(NULL)
 }
 
 # Westfall-Young max-t adjusted p-values (two-sided, absolute statistics).
@@ -243,35 +309,7 @@ check_specs <- function(specs, call = rlang::caller_env()) {
                     {.code perm_maxt(peak = perm_spec(...), latency =
                     perm_spec(...), ...)}.", call = call)
   }
-  terms <- unique(vapply(specs, function(s) s$term, character(1)))
-  if (length(terms) > 1) {
-    cli::cli_abort(c(
-      "All specifications must test the same variable.",
-      "x" = "Found {.val {terms}}."
-    ), call = call)
-  }
   invisible(specs)
-}
-
-check_same_units <- function(ref, values, units, unit_values, name,
-                             call = rlang::caller_env()) {
-  if (!setequal(ref$unit, units$unit)) {
-    cli::cli_abort(c(
-      "Specification {.val {name}} does not have the same units as the
-       first one.",
-      "i" = "All models must be fitted to the same trials or participants."
-    ), call = call)
-  }
-  idx <- match(ref$unit, units$unit)
-  if (!identical(as.character(values), as.character(unit_values[idx])) ||
-      !identical(ref$block, units$block[idx])) {
-    cli::cli_abort(
-      "Specification {.val {name}} assigns different values of the tested
-       variable or different blocks to the same units.",
-      call = call
-    )
-  }
-  invisible(NULL)
 }
 
 # Methods -------------------------------------------------------------------
@@ -279,7 +317,8 @@ check_same_units <- function(ref, values, units, unit_values, name,
 #' @export
 print.lmmr_maxt <- function(x, digits = 3, ...) {
   cat("\nFamily-wise permutation tests for `", x$term, "` (max-t, ",
-      x$method, ")\n\n", sep = "")
+      x$adjust, ")\n\n", sep = "")
+  cat("Method:    ", method_label(x$method), "\n", sep = "")
   cat("Exchange:  ", format(x$exchange, unit = x$unit), " (", x$n_units,
       " units", if (!is.null(x$exchange$block)) {
         paste0(" in ", x$n_blocks, " blocks")
@@ -322,7 +361,7 @@ tidy.lmmr_maxt <- function(x, type = c("summary", "null"), ...) {
     ))
   }
   out <- x$results
-  out$method <- paste0("max-t (", x$method, ")")
+  out$method <- paste0("max-t (", x$adjust, "), ", x$method)
   out
 }
 

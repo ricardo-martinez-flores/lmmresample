@@ -8,7 +8,8 @@ perm_maxt(
   ...,
   unit,
   exchange,
-  method = c("step-down", "single-step"),
+  method = c("auto", "relabel", "freedman-lane"),
+  adjust = c("step-down", "single-step"),
   B = 4999,
   seed = NULL
 )
@@ -19,7 +20,10 @@ used to label the tests.}
 
 \item{unit, exchange, B, seed}{As in \code{\link[=perm_test]{perm_test()}}.}
 
-\item{method}{\code{"step-down"} (default) or \code{"single-step"}. See Details.}
+\item{method}{Resampling method: \code{"auto"}, \code{"relabel"} or
+\code{"freedman-lane"}. See Details.}
+
+\item{adjust}{\code{"step-down"} (default) or \code{"single-step"}. See Details.}
 }
 \value{
 An object of class \code{lmmr_maxt} with methods for \code{\link[=print]{print()}},
@@ -29,24 +33,37 @@ and the family-wise adjusted p-value of each test; \code{null} is the matrix
 of permuted statistics (one column per test).
 }
 \description{
-Tests the same variable in several models at once, for example one model
-per feature extracted from the same trials, and controls the family-wise
-error rate with the max-t procedure of Westfall and Young (1993). In each
-permutation the same relabelling of units is applied to every model, so
-the dependence among the test statistics is preserved and the correction
-is less conservative than Bonferroni when the statistics are correlated.
+Tests several model terms at once, for example the same condition effect
+in one model per feature extracted from the same trials, and controls the
+family-wise error rate with the max-t procedure of Westfall and Young
+(1993). In each permutation the same resampling of units is applied to
+every model, so the dependence among the test statistics is preserved and
+the correction is less conservative than Bonferroni when the statistics
+are correlated.
 }
 \details{
-All specifications must test the same variable (\code{term}) in data sets that
-share the units and their values of \code{term}, as when several outcome
-variables are measured on the same trials. For each permutation, the
-absolute Wald statistics of all models are computed and their maximum is
-recorded.
+All models must be fitted to data that share the resampled units (e.g.
+the same trials of the same participants). Two resampling methods are
+available, as in \code{\link[=perm_test]{perm_test()}}:
 \itemize{
-\item \code{method = "single-step"}: the adjusted p-value of each test is the
+\item \code{"relabel"}: the values of the tested variable are reassigned among
+units. All specifications must then test the same variable, with the
+same values in every data set.
+\item \code{"freedman-lane"}: the residuals of each reduced model are permuted or
+sign-flipped with the same draw for every model. Specifications may test
+different terms, including interactions and effects adjusted for
+covariates.
+}
+
+With \code{method = "auto"}, relabelling is used when it is valid for every
+specification, and Freedman-Lane otherwise. Every tested term must have a
+single coefficient, so that the absolute \emph{t} statistics are comparable
+across tests.
+\itemize{
+\item \code{adjust = "single-step"}: the adjusted p-value of each test is the
 proportion of permutations whose maximum statistic is at least as large
 as the observed statistic of that test.
-\item \code{method = "step-down"}: tests are ordered by decreasing observed
+\item \code{adjust = "step-down"}: tests are ordered by decreasing observed
 statistic and the maximum is taken only over the tests not yet rejected,
 with monotonicity enforced. It is uniformly more powerful than the
 single-step procedure and controls the family-wise error rate under the

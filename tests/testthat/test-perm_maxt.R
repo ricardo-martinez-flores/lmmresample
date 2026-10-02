@@ -132,3 +132,60 @@ test_that("max-t controls the family-wise error rate", {
   expect_lt(mean(any_adj), 0.15)
   expect_gte(mean(any_unadj), mean(any_adj))
 })
+
+test_that("perm_maxt supports Freedman-Lane with interactions", {
+  d <- sim_blocks("within", n_participants = 8, n_trials = 6, n_time = 10,
+                  effect_condition = 1, effect_onset = 0.1, sd_residual = 0.3,
+                  seed = 1)
+  set.seed(1)
+  d$noise <- stats::rnorm(nrow(d))
+  m1 <- lme4::lmer(y ~ condition * time + (1 | participant), data = d)
+  m2 <- lme4::lmer(noise ~ condition * time + (1 | participant), data = d)
+  res <- perm_maxt(signal = perm_spec(m1, "condition:time"),
+                   noise = perm_spec(m2, "condition:time"),
+                   unit = "trial", exchange = exch_signflip("participant"),
+                   B = 49, seed = 2)
+  expect_equal(res$method, "freedman-lane")
+  expect_lt(res$results$p.adjusted[1], 0.05)
+  expect_gt(res$results$p.adjusted[2], 0.05)
+  expect_output(print(res), "Freedman-Lane")
+
+  single <- perm_test(m1, "condition:time", "trial",
+                      exch_signflip("participant"), B = 49, seed = 2)
+  expect_equal(res$null[, "signal"], abs(single$null))
+})
+
+test_that("Freedman-Lane families can mix terms and data orders", {
+  d <- sim_blocks("within", n_participants = 6, n_trials = 4, n_time = 8,
+                  seed = 3)
+  d2 <- d[sample(nrow(d)), ]
+  m1 <- suppressMessages(
+    lme4::lmer(y ~ condition + time + (1 | participant), data = d)
+  )
+  m2 <- suppressMessages(
+    lme4::lmer(y ~ condition * time + (1 | participant), data = d2)
+  )
+  res <- perm_maxt(main = perm_spec(m1, "condition"),
+                   inter = perm_spec(m2, "condition:time"),
+                   unit = "trial", exchange = exch_signflip("participant"),
+                   B = 19, seed = 1)
+  expect_equal(res$method, "freedman-lane")
+  expect_equal(res$B_used, 19)
+
+  m3 <- suppressMessages(
+    lme4::lmer(y ~ condition * splines::ns(time, 2) + (1 | participant),
+               data = d)
+  )
+  expect_error(
+    perm_maxt(a = perm_spec(m1, "condition"),
+              b = perm_spec(m3, "condition:splines::ns(time, 2)"),
+              unit = "trial", exchange = exch_signflip("participant"), B = 9),
+    "single coefficient"
+  )
+  expect_error(
+    perm_maxt(a = perm_spec(m1, "condition"), b = perm_spec(m1, "time"),
+              unit = "trial", exchange = exch_signflip("participant"),
+              method = "relabel", B = 9),
+    "same variable"
+  )
+})
