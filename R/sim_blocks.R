@@ -34,7 +34,9 @@
 #'   averaged within each participant (and condition, if present).
 #' @param n_participants Number of participants. In `"between"` and `"mixed"`
 #'   designs they are split as evenly as possible between the two groups.
-#' @param n_trials Number of trials per participant. In `"within"` and
+#' @param n_trials Number of trials per participant: a single number, or a
+#'   vector with one value per participant to simulate participants with
+#'   different numbers of trials (e.g. after trial rejection). In `"within"` and
 #'   `"mixed"` designs, a proportion `prop_condition` of them is assigned to
 #'   condition `"B"` in random order; with balanced conditions (the default)
 #'   `n_trials` must be even.
@@ -119,7 +121,17 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
   level <- match.arg(level)
 
   check_count(n_participants, "n_participants", min = 2)
-  check_count(n_trials, "n_trials", min = 1)
+  if (!is.numeric(n_trials) || anyNA(n_trials) ||
+      any(n_trials != round(n_trials)) || any(n_trials < 1)) {
+    cli::cli_abort("{.arg n_trials} must contain whole numbers of at least 1.")
+  }
+  if (length(n_trials) != 1 && length(n_trials) != n_participants) {
+    cli::cli_abort(c(
+      "{.arg n_trials} must have length 1 or {.arg n_participants}
+       ({n_participants}).",
+      "x" = "It has length {length(n_trials)}."
+    ))
+  }
   check_count(n_time, "n_time", min = 1)
   check_number(sampling_rate, "sampling_rate", min = 0, min_inclusive = FALSE)
   check_number(effect_condition, "effect_condition")
@@ -147,12 +159,12 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
   has_condition <- design %in% c("within", "mixed")
   has_group <- design %in% c("between", "mixed")
 
-  if (has_condition && n_trials < 2) {
+  if (has_condition && any(n_trials < 2)) {
     cli::cli_abort(
       "{.arg n_trials} must be at least 2 in a {.val {design}} design."
     )
   }
-  if (has_condition && prop_condition == 0.5 && n_trials %% 2 != 0) {
+  if (has_condition && prop_condition == 0.5 && any(n_trials %% 2 != 0)) {
     cli::cli_abort(c(
       "{.arg n_trials} must be even in a {.val {design}} design with balanced
        conditions.",
@@ -198,11 +210,12 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
 
 simulate_series <- function(p, has_condition, has_group) {
   n_p <- p$n_participants
-  n_k <- p$n_trials
+  k <- rep_len(p$n_trials, n_p)
+  n_tr <- sum(k)
   n_t <- p$n_time
 
   pid_width <- nchar(n_p)
-  tid_width <- nchar(n_k)
+  tid_width <- nchar(max(k))
   participant <- sprintf(paste0("p%0", pid_width, "d"), seq_len(n_p))
 
   # Participant-level quantities
@@ -211,17 +224,17 @@ simulate_series <- function(p, has_condition, has_group) {
   b1 <- if (has_condition) stats::rnorm(n_p, 0, p$sd_slope) else rep(0, n_p)
 
   # Trial-level quantities
-  trial_p <- rep(seq_len(n_p), each = n_k)
-  trial_index <- rep(seq_len(n_k), times = n_p)
-  n_b <- min(max(round(n_k * p$prop_condition), 1), n_k - 1)
+  trial_p <- rep(seq_len(n_p), times = k)
+  trial_index <- sequence(k)
   cond01 <- if (has_condition) {
-    as.vector(vapply(seq_len(n_p), function(i) {
+    unlist(lapply(k, function(n_k) {
+      n_b <- min(max(round(n_k * p$prop_condition), 1), n_k - 1)
       sample(rep(0:1, c(n_k - n_b, n_b)))
-    }, integer(n_k)))
+    }))
   } else {
-    rep(0L, n_p * n_k)
+    rep(0L, n_tr)
   }
-  u <- stats::rnorm(n_p * n_k, 0, p$sd_trial)
+  u <- stats::rnorm(n_tr, 0, p$sd_trial)
 
   trial_mean <- p$effect_condition * cond01 +
     p$effect_group * group01[trial_p] +
@@ -231,17 +244,17 @@ simulate_series <- function(p, has_condition, has_group) {
   # Within-trial series: common response curve + AR(1) residuals
   time <- (seq_len(n_t) - 1) / p$sampling_rate
   curve <- response_curve(n_t)
-  resid <- ar1_matrix(n_t, n_p * n_k, p$ar1, p$sd_residual, p$residual_df)
-  y <- as.vector(resid) + rep(curve, times = n_p * n_k) +
+  resid <- ar1_matrix(n_t, n_tr, p$ar1, p$sd_residual, p$residual_df)
+  y <- as.vector(resid) + rep(curve, times = n_tr) +
     rep(trial_mean, each = n_t)
 
-  row_trial <- rep(seq_len(n_p * n_k), each = n_t)
+  row_trial <- rep(seq_len(n_tr), each = n_t)
   out <- data.frame(
     participant = factor(participant[trial_p[row_trial]], levels = participant),
     trial = factor(sprintf(paste0("%s_t%0", tid_width, "d"),
                            participant[trial_p], trial_index)[row_trial]),
     trial_index = trial_index[row_trial],
-    time = rep(time, times = n_p * n_k),
+    time = rep(time, times = n_tr),
     y = y
   )
   if (has_group) {

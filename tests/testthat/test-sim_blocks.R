@@ -180,3 +180,23 @@ test_that("heavy-tailed residuals keep the requested standard deviation", {
 
   expect_error(sim_blocks(residual_df = 2), "greater than 2")
 })
+
+test_that("participants can have different numbers of trials", {
+  d <- sim_blocks("within", "trial", n_participants = 3,
+                  n_trials = c(6, 20, 50), prop_condition = 0.2, seed = 1)
+  expect_equal(as.vector(table(d$participant)), c(6, 20, 50))
+  counts_b <- as.vector(table(d$participant, d$condition)[, "B"])
+  expect_equal(counts_b, c(1, 4, 10))
+  expect_false(anyDuplicated(d$trial) > 0)
+
+  ts <- sim_blocks("within", n_participants = 2, n_trials = c(4, 8),
+                   n_time = 5, seed = 1)
+  expect_equal(nrow(ts), (4 + 8) * 5)
+
+  expect_error(sim_blocks(n_participants = 3, n_trials = c(10, 20)),
+               "length 1 or")
+  expect_error(sim_blocks(n_participants = 2, n_trials = c(10, 0)),
+               "at least 1")
+  expect_error(sim_blocks("within", n_participants = 2, n_trials = c(10, 7)),
+               "must be even")
+})

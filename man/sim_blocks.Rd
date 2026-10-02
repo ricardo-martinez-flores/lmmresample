@@ -37,7 +37,9 @@ averaged within each participant (and condition, if present).}
 \item{n_participants}{Number of participants. In \code{"between"} and \code{"mixed"}
 designs they are split as evenly as possible between the two groups.}
 
-\item{n_trials}{Number of trials per participant. In \code{"within"} and
+\item{n_trials}{Number of trials per participant: a single number, or a
+vector with one value per participant to simulate participants with
+different numbers of trials (e.g. after trial rejection). In \code{"within"} and
 \code{"mixed"} designs, a proportion \code{prop_condition} of them is assigned to
 condition \code{"B"} in random order; with balanced conditions (the default)
 \code{n_trials} must be even.}

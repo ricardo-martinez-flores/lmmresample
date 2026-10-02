@@ -20,7 +20,8 @@
   effect), freely, or within strata.
 
 * `sim_blocks()` gains `prop_condition` (unbalanced conditions, e.g. oddball
-  designs) and `residual_df` (heavy-tailed residuals).
+  designs), `residual_df` (heavy-tailed residuals), and per-participant trial
+  counts through a vector `n_trials`.
 
 * New `sim_blocks()` simulates block-structured repeated measurements (full
   time series, trial-level or participant-level data) for within-participant,
