@@ -126,6 +126,29 @@ make_refitter <- function(model, formula = NULL, call = rlang::caller_env()) {
   }
 }
 
+# Packages that provide functions used in model formulas (e.g. splines for
+# ns()), which must be attached in parallel workers so that refits can
+# evaluate the formula.
+refit_packages <- function(...) {
+  models <- list(...)
+  pkgs <- unlist(lapply(models, function(model) {
+    f <- stats::formula(model)
+    env <- model_env(model)
+    fns <- unique(all.names(f))
+    vapply(fns, function(fn) {
+      obj <- tryCatch(get(fn, envir = env, mode = "function"),
+                      error = function(e) NULL)
+      if (is.null(obj) || is.primitive(obj)) return(NA_character_)
+      ns <- environment(obj)
+      if (is.null(ns) || !isNamespace(ns)) return(NA_character_)
+      getNamespaceName(ns)
+    }, character(1))
+  }))
+  pkgs <- unique(stats::na.omit(unname(pkgs)))
+  setdiff(pkgs, c("base", "stats", "methods", "utils", "graphics",
+                  "grDevices", "lmmresample"))
+}
+
 # Refit, recording convergence problems instead of failing.
 # Returns list(fit = model or NULL, status = character(1)).
 safe_fit <- function(refit, newdata) {
@@ -253,7 +276,8 @@ resolve_coef <- function(model, term, coef = NULL, call = rlang::caller_env()) {
 
 # Run the refits over a matrix of permuted unit indices, in parallel through
 # the future framework. `make_data(b)` returns the data for replicate b.
-run_refits <- function(refit, make_data, B, coefs, type = "t") {
+run_refits <- function(refit, make_data, B, coefs, type = "t",
+                       packages = character(0)) {
   use_progress <- requireNamespace("progressr", quietly = TRUE)
   run <- function() {
     if (use_progress) p <- progressr::progressor(steps = B)
@@ -261,7 +285,7 @@ run_refits <- function(refit, make_data, B, coefs, type = "t") {
       res <- safe_refit(refit, make_data(b), coefs, type)
       if (use_progress) p()
       res
-    }, future.seed = FALSE)
+    }, future.seed = FALSE, future.packages = packages)
   }
   results <- run()
   nm <- if (type == "chi2") "chi2" else coefs

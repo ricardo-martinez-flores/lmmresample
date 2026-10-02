@@ -207,7 +207,8 @@ perm_maxt <- function(...,
     })
     if (use_progress) p()
     out
-  }, future.seed = FALSE)
+  }, future.seed = FALSE,
+  future.packages = do.call(refit_packages, lapply(specs, function(s) s$model)))
 
   null <- matrix(NA_real_, nrow = B, ncol = k,
                  dimnames = list(NULL, names(specs)))

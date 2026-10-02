@@ -6,21 +6,22 @@ boot_data <- function(seed = 1, ...) {
 test_that("boot_ci returns a complete lmmr_boot object", {
   d <- boot_data()
   m <- lme4::lmer(y ~ condition + (1 | participant), data = d)
-  bt <- boot_ci(m, "participant", B = 49, seed = 1)
+  bt <- boot_ci(m, "participant", ci = "bca", B = 49, seed = 1)
   expect_s3_class(bt, "lmmr_boot")
   expect_equal(colnames(bt$boot), "conditionB")
   expect_equal(nrow(bt$boot), 49)
   expect_equal(nrow(bt$jackknife), 10)
   iv <- bt$intervals
   expect_true(iv$conf.low < iv$estimate && iv$estimate < iv$conf.high)
-  expect_output(print(bt), "percentile intervals")
+  expect_output(print(bt), "BCa intervals")
   expect_output(print(bt), "exploratory")
 })
 
 test_that("intervals follow their definitions", {
   d <- boot_data()
   m <- lm(y ~ condition + participant, data = d)
-  bt <- boot_ci(m, "participant", terms = "conditionB", B = 99, seed = 2)
+  bt <- boot_ci(m, "participant", terms = "conditionB", ci = "bca", B = 99,
+                seed = 2)
   b <- bt$boot[, 1]
   est <- bt$estimate[[1]]
   q <- stats::quantile(b, c(0.025, 0.975), names = FALSE, type = 6)
@@ -124,4 +125,12 @@ test_that("bootstrap intervals cover the true effect", {
     cover[i] <- ci[1, 1] <= 0.5 && 0.5 <= ci[1, 2]
   }
   expect_gt(mean(cover), 0.8)
+})
+
+test_that("BCa without the jackknife gives an informative error", {
+  d <- boot_data()
+  m <- lm(y ~ condition + participant, data = d)
+  bt <- boot_ci(m, "participant", B = 19, seed = 1)
+  expect_null(bt$jackknife)
+  expect_error(confint(bt, type = "bca"), "ci = \"bca\"")
 })

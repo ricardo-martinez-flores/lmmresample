@@ -43,7 +43,8 @@ diag_loso <- function(model, cluster, terms = NULL, data = NULL) {
   terms <- check_terms(terms, est_full)
 
   refit <- make_refitter(model)
-  res <- loso_refits(refit, data, cluster, terms)
+  res <- loso_refits(refit, data, cluster, terms,
+                     packages = refit_packages(model))
   change <- sweep(res$estimates, 2, est_full[terms])
   structure(
     list(
@@ -60,7 +61,7 @@ diag_loso <- function(model, cluster, terms = NULL, data = NULL) {
 }
 
 # Leave-one-cluster-out refits (also used for BCa acceleration).
-loso_refits <- function(refit, data, cluster, coefs) {
+loso_refits <- function(refit, data, cluster, coefs, packages = character(0)) {
   ids <- unique(as.character(data[[cluster]]))
   if (length(ids) < 3) {
     cli::cli_abort("At least 3 levels of {.field {cluster}} are needed.",
@@ -70,7 +71,7 @@ loso_refits <- function(refit, data, cluster, coefs) {
     newdata <- droplevels(data[as.character(data[[cluster]]) != id, ,
                                drop = FALSE])
     safe_refit_estimates(refit, newdata, coefs)
-  }, future.seed = FALSE)
+  }, future.seed = FALSE, future.packages = packages)
   est <- matrix(vapply(out, function(o) o$est, numeric(length(coefs))),
                 ncol = length(coefs), byrow = TRUE,
                 dimnames = list(ids, coefs))

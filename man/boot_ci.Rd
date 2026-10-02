@@ -67,12 +67,15 @@ the case bootstrap with few clusters.
 }
 
 Three interval types are available, and all replicates are stored, so
-\code{\link[=confint]{confint()}} can return another type without refitting:
+\code{\link[=confint]{confint()}} can return another type without refitting (BCa only if the
+jackknife was computed):
 \itemize{
 \item \code{"percentile"}: quantiles of the bootstrap distribution.
 \item \code{"bca"}: bias-corrected and accelerated (Efron, 1987), with acceleration
 estimated by a leave-one-cluster-out jackknife. It corrects for bias and
-skewness and is recommended with at least 2000 replicates.
+skewness and is recommended with at least 2000 replicates. The jackknife
+requires one extra refit per cluster and is only computed when
+\code{ci = "bca"}.
 \item \code{"basic"}: reflection of the percentile interval around the estimate.
 }
 
@@ -88,8 +91,8 @@ d <- sim_blocks("within", level = "trial", n_participants = 12,
 m <- lm(y ~ condition + participant, data = d)
 
 # B is small here to keep the example fast; use the default for reporting
-bt <- boot_ci(m, cluster = "participant", terms = "conditionB", B = 99,
-              seed = 1)
+bt <- boot_ci(m, cluster = "participant", terms = "conditionB", ci = "bca",
+              B = 99, seed = 1)
 bt
 confint(bt, type = "bca")
 }

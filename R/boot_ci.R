@@ -20,12 +20,15 @@
 #'   the case bootstrap with few clusters.
 #'
 #' Three interval types are available, and all replicates are stored, so
-#' [confint()] can return another type without refitting:
+#' [confint()] can return another type without refitting (BCa only if the
+#' jackknife was computed):
 #'
 #' * `"percentile"`: quantiles of the bootstrap distribution.
 #' * `"bca"`: bias-corrected and accelerated (Efron, 1987), with acceleration
 #'   estimated by a leave-one-cluster-out jackknife. It corrects for bias and
-#'   skewness and is recommended with at least 2000 replicates.
+#'   skewness and is recommended with at least 2000 replicates. The jackknife
+#'   requires one extra refit per cluster and is only computed when
+#'   `ci = "bca"`.
 #' * `"basic"`: reflection of the percentile interval around the estimate.
 #'
 #' The case bootstrap requires clusters to be the top level of the design.
@@ -70,8 +73,8 @@
 #' m <- lm(y ~ condition + participant, data = d)
 #'
 #' # B is small here to keep the example fast; use the default for reporting
-#' bt <- boot_ci(m, cluster = "participant", terms = "conditionB", B = 99,
-#'               seed = 1)
+#' bt <- boot_ci(m, cluster = "participant", terms = "conditionB", ci = "bca",
+#'               B = 99, seed = 1)
 #' bt
 #' confint(bt, type = "bca")
 #' @export
@@ -122,7 +125,7 @@ boot_ci <- function(model,
     res <- safe_refit_estimates(refit, make_data$build(ids, b), terms)
     if (use_progress) p()
     res
-  }, future.seed = FALSE)
+  }, future.seed = FALSE, future.packages = refit_packages(model))
   boot <- matrix(vapply(results, function(r) r$est, numeric(length(terms))),
                  ncol = length(terms), byrow = TRUE,
                  dimnames = list(NULL, terms))
@@ -136,7 +139,13 @@ boot_ci <- function(model,
     ))
   }
 
-  jack <- loso_refits(refit, data, cluster, terms)$estimates
+  # Jackknife (leave one cluster out) only needed for BCa acceleration
+  jack <- if (ci == "bca") {
+    loso_refits(refit, data, cluster, terms,
+                packages = refit_packages(model))$estimates
+  } else {
+    NULL
+  }
 
   out <- structure(
     list(
@@ -248,7 +257,8 @@ boot_intervals <- function(x, type, level) {
                                    type = 6),
       basic = 2 * est - stats::quantile(b, c(1 - alpha, alpha), names = FALSE,
                                         type = 6),
-      bca = bca_limits(b, est, x$jackknife[, cf], alpha)
+      bca = bca_limits(b, est, if (is.null(x$jackknife)) NULL else
+        x$jackknife[, cf], alpha)
     )
     data.frame(term = cf, estimate = est, conf.low = lim[1],
                conf.high = lim[2], type = type, level = level)
@@ -259,6 +269,12 @@ boot_intervals <- function(x, type, level) {
 }
 
 bca_limits <- function(boot, est, jack, alpha) {
+  if (is.null(jack)) {
+    cli::cli_abort(c(
+      "BCa intervals need the leave-one-cluster-out jackknife.",
+      "i" = "Run {.fn boot_ci} with {.code ci = \"bca\"}."
+    ), call = rlang::caller_env(3))
+  }
   jack <- jack[!is.na(jack)]
   p_below <- mean(boot < est) + 0.5 * mean(boot == est)
   if (p_below <= 0 || p_below >= 1) {
@@ -352,8 +368,8 @@ tidy.lmmr_boot <- function(x, type = c("summary", "replicates"), ...) {
 #' Plot a bootstrap
 #'
 #' Shows the bootstrap distribution of each coefficient with the estimate and
-#' the percentile and BCa intervals overlaid, so that their differences (due
-#' to bias or skewness) can be seen.
+#' the percentile interval, and the BCa interval if it was computed, so that
+#' their differences (due to bias or skewness) can be seen.
 #'
 #' @param x An object of class `lmmr_boot`.
 #' @param ... Not used.
@@ -363,8 +379,8 @@ plot.lmmr_boot <- function(x, ...) {
   rlang::check_installed("ggplot2", reason = "to plot results.")
   reps <- tidy.lmmr_boot(x, type = "replicates")
   reps <- reps[!is.na(reps$estimate), ]
-  iv <- rbind(boot_intervals(x, "percentile", x$level),
-              boot_intervals(x, "bca", x$level))
+  iv <- boot_intervals(x, "percentile", x$level)
+  if (!is.null(x$jackknife)) iv <- rbind(iv, boot_intervals(x, "bca", x$level))
   iv$type <- factor(ifelse(iv$type == "bca", "BCa", "Percentile"),
                     levels = c("Percentile", "BCa"))
   peak <- vapply(split(reps$estimate, reps$term), function(v) {

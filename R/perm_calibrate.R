@@ -122,7 +122,7 @@ perm_calibrate <- function(model,
     })
     if (use_progress) p()
     out
-  }, future.seed = FALSE)
+  }, future.seed = FALSE, future.packages = refit_packages(model))
 
   p_perm <- vapply(results, function(r) r$p_perm, numeric(1))
   p_wald <- vapply(results, function(r) r$p_wald, numeric(1))
@@ -223,7 +223,8 @@ print.lmmr_calib <- function(x, ...) {
   }
   cat("Null:        ", null_text, "\n", sep = "")
   cat("Residuals:   ", if (is.null(x$ar1)) "independent" else
-        paste0("AR(1), phi = ", x$ar1, " within `", x$series, "`"),
+        paste0("AR(1), phi = ", format(round(x$ar1, 3), nsmall = 3),
+               " within `", x$series, "`"),
       "\n", sep = "")
   cat("Exchange:    ", format(x$exchange, unit = x$unit), "\n", sep = "")
   cat("Simulations: ", x$n_sim, ", with ", x$B, " permutations each\n\n",

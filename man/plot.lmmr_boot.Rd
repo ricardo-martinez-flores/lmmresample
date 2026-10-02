@@ -16,6 +16,6 @@ A \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} object with one panel per coef
 }
 \description{
 Shows the bootstrap distribution of each coefficient with the estimate and
-the percentile and BCa intervals overlaid, so that their differences (due
-to bias or skewness) can be seen.
+the percentile interval, and the BCa interval if it was computed, so that
+their differences (due to bias or skewness) can be seen.
 }

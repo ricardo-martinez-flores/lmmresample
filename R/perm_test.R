@@ -179,7 +179,7 @@ perm_test <- function(model,
   draws <- with_seed(seed, engine$draw(B))
   refit <- make_refitter(model)
   res <- run_refits(refit, function(b) engine$make_data(draws, b), B,
-                    test$coefs, test$type)
+                    test$coefs, test$type, packages = refit_packages(model))
 
   null <- res$stats[, 1]
   status <- res$status
