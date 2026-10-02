@@ -9,6 +9,7 @@ perm_maxt(
   unit,
   exchange,
   method = c("auto", "relabel", "freedman-lane"),
+  time = NULL,
   combine = c("auto", "max-t", "min-p"),
   adjust = c("step-down", "single-step"),
   B = 4999,
@@ -19,7 +20,7 @@ perm_maxt(
 \item{...}{Named test specifications created with \code{\link[=perm_spec]{perm_spec()}}. Names are
 used to label the tests.}
 
-\item{unit, exchange, B, seed}{As in \code{\link[=perm_test]{perm_test()}}.}
+\item{unit, exchange, time, B, seed}{As in \code{\link[=perm_test]{perm_test()}}.}
 
 \item{method}{Resampling method: \code{"auto"}, \code{"relabel"} or
 \code{"freedman-lane"}. See Details.}

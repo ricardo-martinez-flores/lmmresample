@@ -44,6 +44,7 @@ diag_acf <- function(model, series, time, lag_max = NULL, data = NULL) {
   if (length(missing) > 0) {
     cli::cli_abort("Column{?s} {.field {missing}} not found in the data.")
   }
+  check_series_ids(data, series, time)
   r <- as.vector(stats::residuals(model))
   ord <- order(data[[series]], data[[time]])
   groups <- split(r[ord], as.character(data[[series]])[ord])

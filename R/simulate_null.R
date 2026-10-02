@@ -20,7 +20,15 @@ make_null_simulator <- function(model, data, coef, null, ar1 = NULL,
   if (is_mixed(model)) {
     theta <- lme4::getME(model, "theta")
     if (null == "sharp") {
+      theta_mean <- theta
       for (cf in coef) theta <- zero_theta_rows(model, theta, cf)
+      if (identical(theta, theta_mean)) {
+        cli::cli_warn(
+          "The model has no random slope for the tested term; the sharp and
+           mean nulls are identical.",
+          call = call
+        )
+      }
     }
     Lt <- lme4::getME(model, "Lambdat")
     Lt@x <- theta[lme4::getME(model, "Lind")]
@@ -77,6 +85,7 @@ ar1_resid_fun <- function(data, series, time, phi, sigma,
     cli::cli_abort("Column{?s} {.field {missing}} not found in the data.",
                    call = call)
   }
+  check_series_ids(data, series, time, call = call)
   ord <- order(data[[series]], data[[time]])
   s_ord <- as.character(data[[series]])[ord]
   starts <- c(TRUE, s_ord[-1] != s_ord[-length(s_ord)])

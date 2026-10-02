@@ -41,7 +41,9 @@
 #' @param ar1 Optional lag-1 autocorrelation of the simulated residuals within
 #'   each `series`, in \eqn{[0, 1)}.
 #' @param series,time Names of the columns identifying each series (e.g.
-#'   `"trial"`) and the time order within it. Required when `ar1` is supplied.
+#'   `"trial"`) and the time order within it. Required when `ar1` is
+#'   supplied; `time` is also used to match samples when Freedman-Lane
+#'   residuals are permuted between units (see [perm_test()]).
 #' @param n_sim Number of simulated data sets.
 #' @param B Number of permutations per simulated data set.
 #' @param alpha Significance level at which rejection rates are evaluated.
@@ -96,7 +98,7 @@ perm_calibrate <- function(model,
 
   data <- model_data(model, data)
   test <- resolve_test(model, data, term, coef, method)
-  engine <- build_engine(model, data, term, test, unit, exchange)
+  engine <- build_engine(model, data, term, test, unit, exchange, time)
   check_permutation_space(engine$space, B, exchange, unit)
 
   response <- response_name(model)
@@ -107,14 +109,15 @@ perm_calibrate <- function(model,
   df_resid <- if (inherits(model, "lm")) stats::df.residual(model) else Inf
 
   sim_seeds <- with_seed(seed, sample.int(.Machine$integer.max, n_sim))
+  rng_kind <- RNGkind()
 
   use_progress <- requireNamespace("progressr", quietly = TRUE)
   if (use_progress) p <- progressr::progressor(steps = n_sim)
   results <- future.apply::future_lapply(seq_len(n_sim), function(i) {
-    out <- with_seed(sim_seeds[i], {
+    out <- with_seed(sim_seeds[i], kind = rng_kind, expr = {
       sim_data <- data
       sim_data[[response]] <- simulate_y()
-      calibrate_one(model, refit, sim_data, term, test, unit, exchange, B,
+      calibrate_one(model, refit, sim_data, term, test, unit, exchange, time, B,
                     df_resid, label)
     })
     if (use_progress) p()
@@ -154,7 +157,7 @@ perm_calibrate <- function(model,
 # One simulated data set: observed statistic, Wald p-value and permutation
 # p-value, with refits run sequentially (parallelism is over simulations).
 calibrate_one <- function(model, refit, sim_data, term, test, unit, exchange,
-                          B, df_resid, label) {
+                          time, B, df_resid, label) {
   failed <- list(p_perm = NA_real_, p_wald = NA_real_, B_used = 0)
   obs <- safe_refit(refit, sim_data, test$coefs, test$type)
   if (obs$status %in% c("failed", "nonconverged")) return(failed)
@@ -168,7 +171,7 @@ calibrate_one <- function(model, refit, sim_data, term, test, unit, exchange,
   }
   engine <- tryCatch(
     suppressWarnings(build_engine(model, sim_data, term, test, unit,
-                                  exchange)),
+                                  exchange, time)),
     error = function(e) NULL
   )
   if (is.null(engine)) return(failed)

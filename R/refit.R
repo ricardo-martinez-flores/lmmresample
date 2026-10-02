@@ -11,6 +11,15 @@ check_model <- function(model, call = rlang::caller_env()) {
       "i" = "Generalized linear (mixed) models are not supported."
     ), call = call)
   }
+  cl <- if (inherits(model, "lmerMod")) model@call else model$call
+  used <- intersect(c("weights", "offset"), names(cl))
+  if (length(used) > 0 || !is.null(attr(stats::terms(model), "offset"))) {
+    cli::cli_abort(c(
+      "Models fitted with weights or offsets are not supported.",
+      "i" = "Resampling would not carry the weights or offsets along with the
+             data."
+    ), call = call)
+  }
   invisible(model)
 }
 
@@ -56,7 +65,29 @@ model_data <- function(model, data = NULL, call = rlang::caller_env()) {
              that every row of the data is used."
     ), call = call)
   }
-  as.data.frame(data)
+  data <- as.data.frame(data)
+  check_alignment(model, data, call = call)
+  data
+}
+
+# The data must be the rows used to fit the model, in the same order:
+# several functions combine model vectors (fitted values, residuals, model
+# matrix) with columns of the data.
+check_alignment <- function(model, data, call = rlang::caller_env()) {
+  y_model <- as.numeric(stats::model.response(stats::model.frame(model)))
+  y_data <- tryCatch(
+    as.numeric(eval(stats::formula(model)[[2]], data, model_env(model))),
+    error = function(e) NULL
+  )
+  if (is.null(y_data) || length(y_data) != length(y_model) ||
+      !isTRUE(all.equal(unname(y_model), unname(y_data)))) {
+    cli::cli_abort(c(
+      "{.arg data} does not match the data used to fit the model.",
+      "i" = "Supply the same rows, in the same order, as used to fit the
+             model."
+    ), call = call)
+  }
+  invisible(TRUE)
 }
 
 # Build a function that refits the model to new data. All arguments of the

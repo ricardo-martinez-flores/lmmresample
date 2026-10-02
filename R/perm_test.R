@@ -60,6 +60,10 @@
 #'   default all coefficients of the term are tested jointly.
 #' @param method Resampling method: `"auto"`, `"relabel"` or
 #'   `"freedman-lane"`. See Details.
+#' @param time Name of the column giving the order of samples within units.
+#'   Required when Freedman-Lane residuals are permuted between units of
+#'   several rows (with [exch_within()] or [exch_free()]), so that samples are
+#'   matched by time; not needed with [exch_signflip()].
 #' @param alternative Direction of the alternative hypothesis.
 #' @param B Number of permutations. The default, 4999, is suitable for
 #'   reporting; use smaller values only for exploration.
@@ -130,6 +134,7 @@ perm_test <- function(model,
                       exchange,
                       coef = NULL,
                       method = c("auto", "relabel", "freedman-lane"),
+                      time = NULL,
                       alternative = c("two.sided", "greater", "less"),
                       B = 4999,
                       seed = NULL,
@@ -151,7 +156,7 @@ perm_test <- function(model,
     cli::cli_abort("One-sided alternatives are only available for terms with
                     a single coefficient.")
   }
-  engine <- build_engine(model, data, term, test, unit, exchange)
+  engine <- build_engine(model, data, term, test, unit, exchange, time)
   check_permutation_space(engine$space, B, exchange, unit)
 
   observed <- if (test$type == "chi2") {

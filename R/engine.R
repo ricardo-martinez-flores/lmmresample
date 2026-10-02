@@ -106,20 +106,47 @@ reduced_formula <- function(model, term) {
   bars <- vapply(lme4::findbars(f), function(bar) {
     bar_lhs <- paste(deparse(bar[[2]], width.cutoff = 500L), collapse = " ")
     group <- paste(deparse(bar[[3]], width.cutoff = 500L), collapse = " ")
-    paste0("(", drop_label(bar_lhs, term), " | ", group, ")")
+    new_lhs <- drop_label(bar_lhs, term)
+    # A random-effects term left without any effect is dropped entirely
+    if (new_lhs == "0") return(NA_character_)
+    paste0("(", new_lhs, " | ", group, ")")
   }, character(1))
+  bars <- bars[!is.na(bars)]
   stats::as.formula(paste(lhs, "~", paste(c(fixed_rhs, bars),
                                           collapse = " + ")), env = env)
+}
+
+# Random-effects terms of a fitted reduced model whose grouping factor is
+# constant within each exchangeability block (i.e. strictly above the
+# resampled units). Only these can be kept in the fitted values used by
+# Freedman-Lane: predicted random effects at or below the units would absorb
+# the tested effect.
+re_form_above_units <- function(fit, data, block) {
+  if (!is_mixed(fit)) return(NULL)
+  bars <- lme4::findbars(stats::formula(fit))
+  keep <- vapply(bars, function(bar) {
+    vars <- all.vars(bar[[3]])
+    if (!all(vars %in% names(data))) return(FALSE)
+    g <- interaction(data[vars], drop = TRUE)
+    n_per_block <- tapply(as.character(g), block,
+                          function(x) length(unique(x)))
+    all(n_per_block == 1)
+  }, logical(1))
+  if (!any(keep)) return(NA)
+  terms <- vapply(bars[keep], function(bar) {
+    paste0("(", paste(deparse(bar, width.cutoff = 500L), collapse = " "), ")")
+  }, character(1))
+  stats::as.formula(paste("~", paste(terms, collapse = " + ")))
 }
 
 # Build an engine for one data set -----------------------------------------
 
 build_engine <- function(model, data, term, test, unit, exchange,
-                         call = rlang::caller_env()) {
+                         time = NULL, call = rlang::caller_env()) {
   if (test$method == "relabel") {
     relabel_engine(data, term, unit, exchange, call = call)
   } else {
-    fl_engine(model, data, term, unit, exchange, call = call)
+    fl_engine(model, data, term, unit, exchange, time = time, call = call)
   }
 }
 
@@ -155,7 +182,7 @@ relabel_engine <- function(data, term, unit, exchange,
   )
 }
 
-fl_engine <- function(model, data, term, unit, exchange,
+fl_engine <- function(model, data, term, unit, exchange, time = NULL,
                       call = rlang::caller_env()) {
   response <- response_name(model, call = call)
   ub <- build_units(data, NULL, unit, exchange, call = call)
@@ -174,17 +201,29 @@ fl_engine <- function(model, data, term, unit, exchange,
       "x" = conditionMessage(fit_r)
     ), call = call)
   }
-  fitted_r <- as.vector(stats::fitted(fit_r))
+  # Fitted values keep only random effects above the resampled units
+  block_of_unit_row <- units$block[row_unit]
+  fitted_r <- if (is_mixed(fit_r)) {
+    re_form <- re_form_above_units(fit_r, data, block_of_unit_row)
+    as.vector(stats::predict(fit_r, re.form = re_form))
+  } else {
+    as.vector(stats::fitted(fit_r))
+  }
   resid_r <- data[[response]] - fitted_r
 
-  # Position of each row within its unit, and rows of each unit
-  ord <- order(row_unit, seq_along(row_unit))
+  # Position of each row within its unit (ordered by `time` if supplied)
   sizes <- tabulate(row_unit, nbins = nrow(units))
-  offsets <- c(0, cumsum(sizes))[seq_len(nrow(units))]
-  pos <- integer(length(row_unit))
-  pos[ord] <- sequence(sizes)
-
   if (exchange$type != "signflip") {
+    if (any(sizes > 1) && is.null(time)) {
+      cli::cli_abort(c(
+        "Permuting residuals between units with several rows requires
+         {.arg time}, so that samples are matched by their time within the
+         unit.",
+        "i" = "Supply the column giving the order of samples within units
+               (e.g. {.code time = \"time\"}), or use {.fn exch_signflip},
+               which does not move residuals between units."
+      ), call = call)
+    }
     same_size <- tapply(sizes, units$block, function(x) length(unique(x)) == 1)
     if (!all(same_size)) {
       cli::cli_abort(c(
@@ -196,10 +235,36 @@ fl_engine <- function(model, data, term, unit, exchange,
       ), call = call)
     }
   }
+  tvals <- if (is.null(time)) seq_along(row_unit) else {
+    check_column_name(time, "time", call = call)
+    if (!time %in% names(data)) {
+      cli::cli_abort("Column {.field {time}} not found in the data.",
+                     call = call)
+    }
+    data[[time]]
+  }
+  ord <- order(row_unit, tvals)
+  offsets <- c(0, cumsum(sizes))[seq_len(nrow(units))]
+  pos <- integer(length(row_unit))
+  pos[ord] <- sequence(sizes)
+  if (exchange$type != "signflip" && !is.null(time) && any(sizes > 1)) {
+    grid <- split(tvals[ord], row_unit[ord])
+    same_grid <- tapply(seq_along(grid), units$block, function(i) {
+      all(vapply(grid[i], function(g) isTRUE(all.equal(g, grid[[i[1]]])),
+                 logical(1)))
+    })
+    if (!all(same_grid)) {
+      cli::cli_abort(c(
+        "Units exchanged within the same block have different time points.",
+        "i" = "Residuals can only be permuted between units sampled at the
+               same times; use {.fn exch_signflip} otherwise."
+      ), call = call)
+    }
+  }
+
   block_of_row <- match(units$block[row_unit], unique(units$block))
   space <- count_permutations(units$unit, units$block, exchange$type)
   if (exchange$type == "signflip") space$uninformative <- 0L
-
   unit_ids <- units$unit
   block_ids <- unique(units$block)
 
@@ -222,7 +287,7 @@ fl_engine <- function(model, data, term, unit, exchange,
     },
     draw = function(B) {
       if (exchange$type == "signflip") {
-        n_blocks <- length(unique(units$block))
+        n_blocks <- length(block_ids)
         matrix(sample(c(-1L, 1L), n_blocks * B, replace = TRUE),
                nrow = n_blocks)
       } else {

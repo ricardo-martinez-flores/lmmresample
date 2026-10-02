@@ -47,7 +47,9 @@ default all coefficients of the term are tested jointly.}
 each \code{series}, in \eqn{[0, 1)}.}
 
 \item{series, time}{Names of the columns identifying each series (e.g.
-\code{"trial"}) and the time order within it. Required when \code{ar1} is supplied.}
+\code{"trial"}) and the time order within it. Required when \code{ar1} is
+supplied; \code{time} is also used to match samples when Freedman-Lane
+residuals are permuted between units (see \code{\link[=perm_test]{perm_test()}}).}
 
 \item{n_sim}{Number of simulated data sets.}
 

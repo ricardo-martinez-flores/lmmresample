@@ -11,6 +11,7 @@ perm_test(
   exchange,
   coef = NULL,
   method = c("auto", "relabel", "freedman-lane"),
+  time = NULL,
   alternative = c("two.sided", "greater", "less"),
   B = 4999,
   seed = NULL,
@@ -35,6 +36,11 @@ default all coefficients of the term are tested jointly.}
 
 \item{method}{Resampling method: \code{"auto"}, \code{"relabel"} or
 \code{"freedman-lane"}. See Details.}
+
+\item{time}{Name of the column giving the order of samples within units.
+Required when Freedman-Lane residuals are permuted between units of
+several rows (with \code{\link[=exch_within]{exch_within()}} or \code{\link[=exch_free]{exch_free()}}), so that samples are
+matched by time; not needed with \code{\link[=exch_signflip]{exch_signflip()}}.}
 
 \item{alternative}{Direction of the alternative hypothesis.}
 

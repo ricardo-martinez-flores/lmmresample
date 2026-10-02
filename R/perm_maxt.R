@@ -85,7 +85,7 @@ print.lmmr_spec <- function(x, ...) {
 #'
 #' @param ... Named test specifications created with [perm_spec()]. Names are
 #'   used to label the tests.
-#' @param unit,exchange,B,seed As in [perm_test()].
+#' @param unit,exchange,time,B,seed As in [perm_test()].
 #' @param method Resampling method: `"auto"`, `"relabel"` or
 #'   `"freedman-lane"`. See Details.
 #' @param combine `"auto"`, `"max-t"` or `"min-p"`. See Details.
@@ -126,6 +126,7 @@ perm_maxt <- function(...,
                       unit,
                       exchange,
                       method = c("auto", "relabel", "freedman-lane"),
+                      time = NULL,
                       combine = c("auto", "max-t", "min-p"),
                       adjust = c("step-down", "single-step"),
                       B = 4999,
@@ -173,7 +174,7 @@ perm_maxt <- function(...,
 
   engines <- lapply(seq_len(k), function(j) {
     build_engine(specs[[j]]$model, specs[[j]]$data, specs[[j]]$term,
-                 tests[[j]], unit, exchange)
+                 tests[[j]], unit, exchange, time)
   })
   ref <- engines[[1]]
   check_permutation_space(ref$space, B, exchange, unit)
@@ -237,7 +238,7 @@ perm_maxt <- function(...,
   p_adj <- if (combine == "max-t") {
     maxt_adjust(observed, null_used, adjust)
   } else {
-    minp_adjust(p_unadj, null_used, adjust)
+    minp_adjust(observed, null_used, adjust)
   }
 
   structure(
@@ -325,22 +326,28 @@ maxt_adjust <- function(observed, null, method) {
   p
 }
 
-# Westfall-Young min-p adjusted p-values. `p_obs` are the unadjusted
-# permutation p-values; the p-value of each permuted statistic is computed
-# within its own column of `null` (larger statistics are more extreme).
-minp_adjust <- function(p_obs, null, method) {
-  k <- length(p_obs)
-  n <- nrow(null)
-  if (n == 0) return(rep(NA_real_, k))
-  p_null <- apply(null, 2, function(v) {
-    (n - rank(v, ties.method = "min") + 1) / n
-  })
-  p_null <- matrix(p_null, nrow = n)
+# Permutation p-values of the observed statistics (row 1) and of every
+# permuted statistic, each computed within its own column of
+# rbind(observed, null), so that the observed data are part of the reference
+# set (larger statistics are more extreme).
+column_pvalues <- function(observed, null) {
+  all <- rbind(observed, null)
+  n <- nrow(all)
+  matrix(apply(all, 2, function(v) (n - rank(v, ties.method = "min") + 1) / n),
+         nrow = n)
+}
+
+# Westfall-Young min-p adjusted p-values.
+minp_adjust <- function(observed, null, method) {
+  k <- length(observed)
+  if (nrow(null) == 0) return(rep(NA_real_, k))
+  pv <- column_pvalues(observed, null)
+  p_obs <- pv[1, ]
   tol <- 1e-12
   if (method == "single-step") {
-    min_null <- apply(p_null, 1, min)
+    min_all <- apply(pv, 1, min)
     return(vapply(seq_len(k), function(j) {
-      (sum(min_null <= p_obs[j] + tol) + 1) / (n + 1)
+      mean(min_all <= p_obs[j] + tol)
     }, numeric(1)))
   }
   ord <- order(p_obs)
@@ -348,8 +355,8 @@ minp_adjust <- function(p_obs, null, method) {
   for (r in seq_len(k)) {
     j <- ord[r]
     remaining <- ord[r:k]
-    min_null <- apply(p_null[, remaining, drop = FALSE], 1, min)
-    p[j] <- (sum(min_null <= p_obs[j] + tol) + 1) / (n + 1)
+    min_all <- apply(pv[, remaining, drop = FALSE], 1, min)
+    p[j] <- mean(min_all <= p_obs[j] + tol)
   }
   p[ord] <- cummax(p[ord])
   p
@@ -444,11 +451,8 @@ plot.lmmr_maxt <- function(x, alpha = 0.05, ...) {
   obs <- x$results
   obs$significant <- obs$p.adjusted <= alpha
   if (identical(x$combine, "min-p")) {
-    n <- nrow(null)
-    p_null <- matrix(apply(null, 2, function(v) {
-      (n - rank(v, ties.method = "min") + 1) / n
-    }), nrow = n)
-    min_p <- apply(p_null, 1, min)
+    pv <- column_pvalues(obs$statistic, null)
+    min_p <- apply(pv[-1, , drop = FALSE], 1, min)
     critical <- stats::quantile(min_p, alpha, names = FALSE)
     return(
       ggplot2::ggplot(data.frame(value = min_p),

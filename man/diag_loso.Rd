@@ -12,7 +12,8 @@ diag_loso(model, cluster, terms = NULL, data = NULL)
 \item{cluster}{Name of the column identifying the clusters to leave out.}
 
 \item{terms}{Names of the fixed-effect coefficients to report. By default
-all except the intercept.}
+all except the intercept and the coefficients of terms involving
+\code{cluster}.}
 
 \item{data}{The data used to fit \code{model}, if it cannot be recovered from
 the model call.}

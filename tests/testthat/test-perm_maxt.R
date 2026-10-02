@@ -197,21 +197,19 @@ test_that("Freedman-Lane families can mix terms and data orders", {
 
 test_that("min-p adjustment follows the definition", {
   null <- cbind(c(1, 2, 3, 4), c(10, 20, 30, 40))
-  p_obs <- c(perm_pvalue(3.5, null[, 1], "greater"),
-             perm_pvalue(15, null[, 2], "greater"))
-  # Column p-values: c(1, .75, .5, .25) in both columns, so min p = same
-  ss <- minp_adjust(p_obs, null, "single-step")
-  expect_equal(ss, c((1 + 1) / 5, (3 + 1) / 5))
-  sd <- minp_adjust(p_obs, null, "step-down")
+  obs <- c(3.5, 15)
+  # Column p-values computed on rbind(observed, null), n = 5
+  pv <- column_pvalues(obs, null)
+  expect_equal(pv[1, ], c(2 / 5, 4 / 5))
+  expect_equal(pv[, 1], c(2, 5, 4, 3, 1) / 5)
+  ss <- minp_adjust(obs, null, "single-step")
+  min_all <- apply(pv, 1, min)
+  expect_equal(ss, c(mean(min_all <= 2 / 5), mean(min_all <= 4 / 5)))
+  sd <- minp_adjust(obs, null, "step-down")
   expect_true(all(sd <= ss))
-  expect_true(all(diff(sd[order(p_obs)]) >= 0))
-  # With identical columns min-p equals max-t
-  null2 <- cbind(c(1, 2, 3, 4), c(1, 2, 3, 4))
-  obs <- c(3.5, 1.5)
-  p2 <- vapply(1:2, function(j) perm_pvalue(obs[j], null2[, j], "greater"),
-               numeric(1))
-  expect_equal(minp_adjust(p2, null2, "single-step"),
-               maxt_adjust(obs, null2, "single-step"))
+  ord <- order(pv[1, ])
+  expect_true(all(diff(sd[ord]) >= 0))
+  expect_true(all(sd >= pv[1, ]))
 })
 
 test_that("min-p combines statistics on different scales", {

@@ -28,7 +28,9 @@ boot_ci(
 \item{level}{Confidence level.}
 
 \item{terms}{Names of the fixed-effect coefficients. By default all except
-the intercept.}
+the intercept and the coefficients of terms involving \code{cluster} (or
+grouping factors nested in it), which are not estimable in resampled
+data.}
 
 \item{B}{Number of bootstrap replicates. The default, 4999, is suitable for
 reporting, in particular with BCa intervals.}

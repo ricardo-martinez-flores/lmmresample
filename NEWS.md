@@ -1,5 +1,25 @@
 # lmmresample 0.0.0.9000
 
+* Fixes from an independent review:
+  - Freedman-Lane: fitted values of the reduced model now keep only random
+    effects grouped above the resampled units, so effects can no longer be
+    absorbed by participant or trial intercepts when those units are
+    permuted.
+  - Freedman-Lane permutation of residuals between units now requires `time`
+    and matches samples by time, refusing units with different time points.
+  - `perm_maxt()` with min-p includes the observed data in the reference set
+    of each test, which removes an anti-conservative bias for small `B`.
+  - `data` supplied in a different order from the fitted model, and models
+    with weights or offsets, are refused.
+  - Series identifiers that repeat across participants are refused in
+    `diag_acf()` and `perm_calibrate()`.
+  - Default coefficients in `boot_ci()` and `diag_loso()` exclude terms of
+    the cluster factor; `diag_agreement()` handles any contrast coding;
+    groupings that include the cluster are no longer reported as crossed.
+  - Random-effects terms left empty in the reduced model are dropped;
+    calibration is reproducible with any RNG kind; the sharp null warns when
+    there is no random slope to remove.
+
 * New `boot_ci()` computes bootstrap confidence intervals for fixed effects by
   resampling whole clusters (case bootstrap, with repeated clusters and
   nested units relabelled) or by cluster wild bootstrap with Rademacher

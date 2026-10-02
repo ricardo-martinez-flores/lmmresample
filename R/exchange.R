@@ -136,7 +136,10 @@ build_units <- function(data, term, unit, exchange, call = rlang::caller_env()) 
       "x" = "{bad} unit{?s} contain{?s/} more than one value of
              {.field {term}}.",
       "i" = "Choose a {.arg unit} at which {.field {term}} is defined, e.g.
-             the trial for a condition or the participant for a group."
+             the trial for a condition or the participant for a group.",
+      "i" = "If unit identifiers repeat across participants (e.g. trials
+             numbered within each participant), create unique identifiers,
+             e.g. {.code interaction(participant, trial)}."
     ), call = call)
   }
 
@@ -155,7 +158,9 @@ build_units <- function(data, term, unit, exchange, call = rlang::caller_env()) 
         "Each {.field {unit}} must belong to a single {label}
          ({.field {blk}}).",
         "x" = "{sum(n_blocks > 1)} unit{?s} span{?s/} several levels of
-               {.field {blk}}."
+               {.field {blk}}.",
+        "i" = "If unit identifiers repeat across participants, create unique
+               identifiers, e.g. {.code interaction(participant, trial)}."
       ), call = call)
     }
     units$block <- as.character(data[[blk]])[first]

@@ -40,7 +40,9 @@
 #' @param ci Interval type: `"percentile"`, `"bca"` or `"basic"`.
 #' @param level Confidence level.
 #' @param terms Names of the fixed-effect coefficients. By default all except
-#'   the intercept.
+#'   the intercept and the coefficients of terms involving `cluster` (or
+#'   grouping factors nested in it), which are not estimable in resampled
+#'   data.
 #' @param B Number of bootstrap replicates. The default, 4999, is suitable for
 #'   reporting, in particular with BCa intervals.
 #' @param seed Optional integer seed. The global random number generator
@@ -98,13 +100,14 @@ boot_ci <- function(model,
     cli::cli_abort("Column {.field {cluster}} contains missing values.")
   }
   est <- fixed_estimates(model)
-  terms <- check_terms(terms, est)
   n_clusters <- length(unique(data[[cluster]]))
   if (n_clusters < 3) {
     cli::cli_abort("At least 3 clusters are needed; found {n_clusters}.")
   }
 
   nested <- nested_grouping(model, data, cluster)
+  if (is.null(terms)) terms <- default_terms(model, c(cluster, nested))
+  terms <- check_terms(terms, est)
   refit <- make_refitter(model)
   make_data <- if (resample == "case") {
     case_resampler(data, cluster, nested)
@@ -163,26 +166,28 @@ boot_ci <- function(model,
 nested_grouping <- function(model, data, cluster) {
   if (!is_mixed(model)) return(character(0))
   bars <- lme4::findbars(stats::formula(model))
-  vars <- unique(unlist(lapply(bars, function(b) all.vars(b[[3]]))))
-  vars <- setdiff(intersect(vars, names(data)), cluster)
   cl <- as.character(data[[cluster]])
   nested <- character(0)
-  for (v in vars) {
-    n_per_level <- tapply(cl, as.character(data[[v]]),
-                          function(x) length(unique(x)))
+  for (bar in bars) {
+    vars <- intersect(all.vars(bar[[3]]), names(data))
+    # Groupings that include the cluster become unique once it is relabelled
+    if (cluster %in% vars || length(vars) == 0) next
+    g <- as.character(interaction(data[vars], drop = TRUE))
+    n_per_level <- tapply(cl, g, function(x) length(unique(x)))
     if (all(n_per_level == 1)) {
-      nested <- c(nested, v)
+      nested <- c(nested, vars)
     } else {
+      label <- paste(vars, collapse = ":")
       cli::cli_warn(c(
-        "Random effects grouped by {.field {v}} are crossed with
+        "Random effects grouped by {.field {label}} are crossed with
          {.field {cluster}}.",
         "i" = "Bootstrap intervals reflect sampling of {.field {cluster}}
-               only, not of {.field {v}}. {.fn lme4::bootMer} provides a
+               only, not of {.field {label}}. {.fn lme4::bootMer} provides a
                parametric alternative."
       ), call = rlang::caller_env(2))
     }
   }
-  nested
+  unique(nested)
 }
 
 case_resampler <- function(data, cluster, nested) {

@@ -12,7 +12,8 @@
 #' @param model A linear model fitted with [stats::lm()] or [lme4::lmer()].
 #' @param cluster Name of the column identifying the clusters to leave out.
 #' @param terms Names of the fixed-effect coefficients to report. By default
-#'   all except the intercept.
+#'   all except the intercept and the coefficients of terms involving
+#'   `cluster`.
 #' @param data The data used to fit `model`, if it cannot be recovered from
 #'   the model call.
 #'
@@ -38,6 +39,7 @@ diag_loso <- function(model, cluster, terms = NULL, data = NULL) {
   }
   est_full <- fixed_estimates(model)
   se_full <- sqrt(diag(as.matrix(stats::vcov(model))))[names(est_full)]
+  if (is.null(terms)) terms <- default_terms(model, cluster)
   terms <- check_terms(terms, est_full)
 
   refit <- make_refitter(model)
@@ -93,6 +95,28 @@ safe_refit_estimates <- function(refit, newdata, coefs) {
 
 fixed_estimates <- function(model) {
   if (is_mixed(model)) lme4::fixef(model) else stats::coef(model)
+}
+
+# Default coefficients: all except the intercept and those of fixed-effect
+# terms involving `exclude` variables (e.g. the cluster factor, whose
+# coefficients do not survive resampling or omission of clusters).
+default_terms <- function(model, exclude) {
+  est <- fixed_estimates(model)
+  mm <- stats::model.matrix(model)
+  assign <- attr(mm, "assign")
+  tt <- stats::terms(model)
+  labels <- attr(tt, "term.labels")
+  factors <- attr(tt, "factors")
+  drop_terms <- which(vapply(labels, function(lab) {
+    any(rownames(factors)[factors[, lab] > 0] %in% exclude)
+  }, logical(1)))
+  keep <- colnames(mm)[!assign %in% c(0, drop_terms)]
+  keep <- intersect(keep, names(est)[!is.na(est)])
+  if (length(keep) == 0) {
+    cli::cli_abort("No fixed-effect coefficients to report; choose them with
+                    {.arg terms}.", call = rlang::caller_env())
+  }
+  keep
 }
 
 check_terms <- function(terms, est, call = rlang::caller_env()) {
@@ -259,7 +283,18 @@ diag_agreement <- function(model, term, cluster, tolerance = 0.25,
   }
   mean_diff <- mean(diffs)
   se_diff <- stats::sd(diffs) / sqrt(length(diffs))
-  estimate <- fixed_estimates(model)[[coef]]
+  # Model-implied difference between the two levels, for any contrast coding
+  contr <- attr(stats::model.matrix(model), "contrasts")[[term]]
+  cmat <- if (is.null(contr)) {
+    stats::contr.treatment(lev)
+  } else if (is.character(contr)) {
+    get(contr, mode = "function")(lev)
+  } else {
+    contr
+  }
+  cmat <- as.matrix(cmat)
+  estimate <- fixed_estimates(model)[[coef]] *
+    as.numeric(cmat[2, 1] - cmat[1, 1])
   discrepancy <- estimate - mean_diff
   relative <- if (mean_diff != 0) discrepancy / abs(mean_diff) else Inf
   flagged <- abs(relative) > tolerance && abs(discrepancy) > se_diff
