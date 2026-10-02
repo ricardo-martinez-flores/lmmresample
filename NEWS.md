@@ -1,5 +1,10 @@
 # lmmresample 0.0.0.9000
 
+* New `perm_maxt()` and `perm_spec()` test the same variable in several models
+  at once (e.g. one model per feature) and control the family-wise error rate
+  with the Westfall-Young max-t procedure (single-step or step-down), using
+  one shared relabelling of units per permutation.
+
 * New `perm_calibrate()` checks the type I error of a permutation test for the
   user's own design by simulating data under the null from the fitted model
   (mean or sharp null, optional AR(1) residuals within series), and compares

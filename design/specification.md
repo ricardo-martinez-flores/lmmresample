@@ -187,12 +187,12 @@ perm_maxt(
   ...,                        # named perm_spec() objects
   unit,
   exchange,
-  method = c("single-step", "step-down"),
+  method = c("step-down", "single-step"),
   B = 4999,
   seed = NULL
 )
 
-perm_spec(model, term, coef = NULL)
+perm_spec(model, term, coef = NULL, data = NULL)
 ```
 
 - Each `perm_spec()` pairs a model with the term tested in it. Several terms
