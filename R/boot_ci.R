@@ -65,10 +65,11 @@
 #' @examples
 #' d <- sim_blocks("within", level = "trial", n_participants = 12,
 #'                 n_trials = 10, effect_condition = 0.5, seed = 1)
-#' m <- lme4::lmer(y ~ condition + (1 | participant), data = d)
+#' m <- lm(y ~ condition + participant, data = d)
 #'
 #' # B is small here to keep the example fast; use the default for reporting
-#' bt <- boot_ci(m, cluster = "participant", B = 199, seed = 1)
+#' bt <- boot_ci(m, cluster = "participant", terms = "conditionB", B = 99,
+#'               seed = 1)
 #' bt
 #' confint(bt, type = "bca")
 #' @export
