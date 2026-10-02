@@ -1,5 +1,10 @@
 # lmmresample 0.0.0.9000
 
+* New `diag_loso()` refits the model leaving out each participant in turn and
+  flags influential participants; `diag_agreement()` compares the model
+  coefficient of a two-level condition with the mean participant-level
+  difference.
+
 * New diagnostics: `diag_acf()` estimates the autocorrelation of residuals
   within series (its lag-1 value can be passed to `perm_calibrate()`), and
   `diag_timecourse()` shows mean residuals over time by condition to detect a

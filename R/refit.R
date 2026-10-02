@@ -84,10 +84,9 @@ make_refitter <- function(model, formula = NULL, call = rlang::caller_env()) {
   }
 }
 
-# Refit and extract statistics, recording problems instead of failing.
-# Returns list(stat = named numeric, status = character(1)). With
-# `type = "chi2"` the statistic is a single Wald chi-square for all `coefs`.
-safe_refit <- function(refit, newdata, coefs, type = "t") {
+# Refit, recording convergence problems instead of failing.
+# Returns list(fit = model or NULL, status = character(1)).
+safe_fit <- function(refit, newdata) {
   status <- "ok"
   fit <- withCallingHandlers(
     tryCatch(refit(newdata), error = function(e) NULL),
@@ -104,16 +103,30 @@ safe_refit <- function(refit, newdata, coefs, type = "t") {
       invokeRestart("muffleMessage")
     }
   )
-  if (is.null(fit)) {
+  if (is.null(fit)) return(list(fit = NULL, status = "failed"))
+  if (status == "ok" && is_mixed(fit) && lme4::isSingular(fit)) {
+    status <- "singular"
+  }
+  list(fit = fit, status = status)
+}
+
+# Refit and extract statistics, recording problems instead of failing.
+# Returns list(stat = named numeric, status = character(1)). With
+# `type = "chi2"` the statistic is a single Wald chi-square for all `coefs`.
+safe_refit <- function(refit, newdata, coefs, type = "t") {
+  res <- safe_fit(refit, newdata)
+  if (is.null(res$fit)) {
     n_stat <- if (type == "chi2") 1 else length(coefs)
     nm <- if (type == "chi2") "chi2" else coefs
     return(list(stat = stats::setNames(rep(NA_real_, n_stat), nm),
                 status = "failed"))
   }
-  if (status == "ok" && is_mixed(fit) && lme4::isSingular(fit)) {
-    status <- "singular"
+  stat <- if (type == "chi2") {
+    wald_chi2(res$fit, coefs)
+  } else {
+    coef_stats(res$fit, coefs)
   }
-  stat <- if (type == "chi2") wald_chi2(fit, coefs) else coef_stats(fit, coefs)
+  status <- res$status
   if (anyNA(stat) && status == "ok") status <- "failed"
   list(stat = stat, status = status)
 }
