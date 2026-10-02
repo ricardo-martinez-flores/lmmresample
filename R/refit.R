@@ -108,6 +108,17 @@ make_refitter <- function(model, formula = NULL, call = rlang::caller_env()) {
   args$data <- NULL
   args <- lapply(args, function(a) eval(a, env))
   args$formula <- if (is.null(formula)) stats::formula(model) else formula
+  if (is_mixed(model) && isTRUE(getOption("lmmresample.fast", TRUE))) {
+    # Start from the variance parameters of the original fit (same model
+    # only) and skip lme4's derivative-based convergence check, which is
+    # slow on large data and often raises false alarms.
+    if (is.null(formula) && is.null(args$start)) {
+      args$start <- list(theta = lme4::getME(model, "theta"))
+    }
+    if (is.null(args$control)) {
+      args$control <- lme4::lmerControl(calc.derivs = FALSE)
+    }
+  }
   args$data <- quote(.lmmr_data)
   refit_call <- as.call(c(list(fun), args))
   function(newdata) {

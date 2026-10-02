@@ -105,6 +105,13 @@ extreme as the observed one and \eqn{B'} is the number of permutations
 that were refitted successfully. Refits that fail or do not converge are
 excluded and counted; singular fits are kept and counted.
 
+For mixed models, each refit starts from the variance parameters of the
+original model and skips the derivative-based convergence check of
+\pkg{lme4}, which roughly halves the time per refit on large data sets.
+Set \code{options(lmmresample.fast = FALSE)} to refit with the default
+settings; a \code{control} argument in the original model call is always
+respected.
+
 Permutations are generated in the main R session, so results are
 identical for a given \code{seed} whatever the parallel backend. Refits run in
 parallel through the \pkg{future} framework: choose a backend with

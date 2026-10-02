@@ -39,6 +39,13 @@
 #' that were refitted successfully. Refits that fail or do not converge are
 #' excluded and counted; singular fits are kept and counted.
 #'
+#' For mixed models, each refit starts from the variance parameters of the
+#' original model and skips the derivative-based convergence check of
+#' \pkg{lme4}, which roughly halves the time per refit on large data sets.
+#' Set `options(lmmresample.fast = FALSE)` to refit with the default
+#' settings; a `control` argument in the original model call is always
+#' respected.
+#'
 #' Permutations are generated in the main R session, so results are
 #' identical for a given `seed` whatever the parallel backend. Refits run in
 #' parallel through the \pkg{future} framework: choose a backend with

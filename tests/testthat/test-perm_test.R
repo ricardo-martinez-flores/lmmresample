@@ -218,3 +218,18 @@ test_that("perm_test supports sign-flipping within participants", {
     "both values in every block"
   )
 })
+
+test_that("fast refits give the same statistics as default refits", {
+  d <- within_trials(effect = 0.5)
+  m <- lme4::lmer(y ~ condition + (1 + condition | participant), data = d)
+  fast <- suppressWarnings(perm_test(m, "condition", "trial",
+                                     exch_signflip("participant"), B = 9,
+                                     seed = 1))
+  old <- options(lmmresample.fast = FALSE)
+  on.exit(options(old), add = TRUE)
+  slow <- suppressWarnings(perm_test(m, "condition", "trial",
+                                     exch_signflip("participant"), B = 9,
+                                     seed = 1))
+  ok <- !is.na(fast$null) & !is.na(slow$null)
+  expect_equal(fast$null[ok], slow$null[ok], tolerance = 1e-3)
+})

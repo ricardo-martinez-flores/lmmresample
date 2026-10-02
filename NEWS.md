@@ -1,5 +1,10 @@
 # lmmresample 0.0.0.9000
 
+* Refits of mixed models start from the variance parameters of the original
+  fit and skip lme4's derivative-based convergence check, roughly halving
+  the time per refit on large data; `options(lmmresample.fast = FALSE)`
+  restores the default settings.
+
 * Fixes from an independent review:
   - Freedman-Lane: fitted values of the reduced model now keep only random
     effects grouped above the resampled units, so effects can no longer be
