@@ -196,10 +196,10 @@ test_that("residuals are matched by time, not by row order", {
 
 test_that("random-effects terms left empty are dropped", {
   d <- fl_data()
-  m <- suppressMessages(
+  m <- suppressWarnings(suppressMessages(
     lme4::lmer(y ~ condition + time + (1 | participant) +
                  (0 + condition | participant), data = d)
-  )
+  ))
   f <- paste(deparse(reduced_formula(m, "condition")), collapse = "")
   expect_false(grepl("(0 |", f, fixed = TRUE))
   expect_match(f, "(1 | participant)", fixed = TRUE)

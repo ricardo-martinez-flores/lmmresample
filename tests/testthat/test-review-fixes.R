@@ -26,9 +26,11 @@ test_that("series identifiers that repeat across participants are refused", {
   m <- lm(y ~ condition + participant, data = d)
   expect_error(diag_acf(m, "trial_index", "time"), "more than once")
   expect_error(
-    perm_calibrate(m, "condition", "trial", exch_signflip("participant"),
-                   ar1 = 0.5, series = "trial_index", time = "time",
-                   n_sim = 2, B = 9),
+    suppressWarnings(
+      perm_calibrate(m, "condition", "trial", exch_signflip("participant"),
+                     ar1 = 0.5, series = "trial_index", time = "time",
+                     n_sim = 2, B = 9)
+    ),
     "more than once"
   )
 })
