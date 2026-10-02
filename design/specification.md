@@ -193,6 +193,7 @@ perm_maxt(
   unit,
   exchange,
   method = c("auto", "relabel", "freedman-lane"),
+  combine = c("auto", "max-t", "min-p"),
   adjust = c("step-down", "single-step"),
   B = 4999,
   seed = NULL

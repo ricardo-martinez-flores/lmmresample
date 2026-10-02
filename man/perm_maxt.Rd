@@ -2,13 +2,14 @@
 % Please edit documentation in R/perm_maxt.R
 \name{perm_maxt}
 \alias{perm_maxt}
-\title{Family-wise permutation tests with the max-t procedure}
+\title{Family-wise permutation tests (max-t and min-p)}
 \usage{
 perm_maxt(
   ...,
   unit,
   exchange,
   method = c("auto", "relabel", "freedman-lane"),
+  combine = c("auto", "max-t", "min-p"),
   adjust = c("step-down", "single-step"),
   B = 4999,
   seed = NULL
@@ -23,6 +24,8 @@ used to label the tests.}
 \item{method}{Resampling method: \code{"auto"}, \code{"relabel"} or
 \code{"freedman-lane"}. See Details.}
 
+\item{combine}{\code{"auto"}, \code{"max-t"} or \code{"min-p"}. See Details.}
+
 \item{adjust}{\code{"step-down"} (default) or \code{"single-step"}. See Details.}
 }
 \value{
@@ -35,8 +38,8 @@ of permuted statistics (one column per test).
 \description{
 Tests several model terms at once, for example the same condition effect
 in one model per feature extracted from the same trials, and controls the
-family-wise error rate with the max-t procedure of Westfall and Young
-(1993). In each permutation the same resampling of units is applied to
+family-wise error rate with the max-t or min-p procedures of Westfall and
+Young (1993). In each permutation the same resampling of units is applied to
 every model, so the dependence among the test statistics is preserved and
 the correction is less conservative than Bonferroni when the statistics
 are correlated.
@@ -56,18 +59,31 @@ covariates.
 }
 
 With \code{method = "auto"}, relabelling is used when it is valid for every
-specification, and Freedman-Lane otherwise. Every tested term must have a
-single coefficient, so that the absolute \emph{t} statistics are comparable
-across tests.
+specification, and Freedman-Lane otherwise.
+
+Two ways of combining the tests are available:
+\itemize{
+\item \code{combine = "max-t"}: in each permutation the largest statistic across
+tests is recorded. The statistics must be on the same scale, so every
+term must have a single coefficient (absolute \emph{t} statistics).
+\item \code{combine = "min-p"}: each statistic is first converted into a p-value
+within its own permutation distribution, and the smallest p-value across
+tests is recorded. It accepts statistics on different scales, such as a
+\emph{t} for a main effect and a chi-square for a condition by spline-of-time
+interaction, and gives each test the same weight.
+}
+
+With \code{combine = "auto"}, max-t is used when every term has a single
+coefficient and min-p otherwise.
 \itemize{
 \item \code{adjust = "single-step"}: the adjusted p-value of each test is the
-proportion of permutations whose maximum statistic is at least as large
-as the observed statistic of that test.
-\item \code{adjust = "step-down"}: tests are ordered by decreasing observed
-statistic and the maximum is taken only over the tests not yet rejected,
-with monotonicity enforced. It is uniformly more powerful than the
-single-step procedure and controls the family-wise error rate under the
-same conditions.
+proportion of permutations whose maximum statistic (or minimum p-value)
+is at least as extreme as the observed one for that test.
+\item \code{adjust = "step-down"}: tests are ordered from the most to the least
+extreme and the maximum (or minimum) is taken only over the tests not yet
+rejected, with monotonicity enforced. It is uniformly more powerful than
+the single-step procedure and controls the family-wise error rate under
+the same conditions.
 }
 
 Adjusted p-values use the Phipson and Smyth (2010) correction. Permutations

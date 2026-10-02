@@ -18,6 +18,7 @@ A \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} object.
 }
 \description{
 Shows the permutation distribution of the maximum absolute statistic
-across tests, with the observed statistic of each test and the critical
-value that controls the family-wise error rate at \code{alpha}.
+(max-t) or of the minimum p-value (min-p) across tests, with the observed
+value of each test and the critical value that controls the family-wise
+error rate at \code{alpha}.
 }

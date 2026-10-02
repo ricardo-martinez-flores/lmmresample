@@ -30,12 +30,12 @@ print.lmmr_spec <- function(x, ...) {
   invisible(x)
 }
 
-#' Family-wise permutation tests with the max-t procedure
+#' Family-wise permutation tests (max-t and min-p)
 #'
 #' Tests several model terms at once, for example the same condition effect
 #' in one model per feature extracted from the same trials, and controls the
-#' family-wise error rate with the max-t procedure of Westfall and Young
-#' (1993). In each permutation the same resampling of units is applied to
+#' family-wise error rate with the max-t or min-p procedures of Westfall and
+#' Young (1993). In each permutation the same resampling of units is applied to
 #' every model, so the dependence among the test statistics is preserved and
 #' the correction is less conservative than Bonferroni when the statistics
 #' are correlated.
@@ -54,18 +54,30 @@ print.lmmr_spec <- function(x, ...) {
 #'   covariates.
 #'
 #' With `method = "auto"`, relabelling is used when it is valid for every
-#' specification, and Freedman-Lane otherwise. Every tested term must have a
-#' single coefficient, so that the absolute *t* statistics are comparable
-#' across tests.
+#' specification, and Freedman-Lane otherwise.
+#'
+#' Two ways of combining the tests are available:
+#'
+#' * `combine = "max-t"`: in each permutation the largest statistic across
+#'   tests is recorded. The statistics must be on the same scale, so every
+#'   term must have a single coefficient (absolute *t* statistics).
+#' * `combine = "min-p"`: each statistic is first converted into a p-value
+#'   within its own permutation distribution, and the smallest p-value across
+#'   tests is recorded. It accepts statistics on different scales, such as a
+#'   *t* for a main effect and a chi-square for a condition by spline-of-time
+#'   interaction, and gives each test the same weight.
+#'
+#' With `combine = "auto"`, max-t is used when every term has a single
+#' coefficient and min-p otherwise.
 #'
 #' * `adjust = "single-step"`: the adjusted p-value of each test is the
-#'   proportion of permutations whose maximum statistic is at least as large
-#'   as the observed statistic of that test.
-#' * `adjust = "step-down"`: tests are ordered by decreasing observed
-#'   statistic and the maximum is taken only over the tests not yet rejected,
-#'   with monotonicity enforced. It is uniformly more powerful than the
-#'   single-step procedure and controls the family-wise error rate under the
-#'   same conditions.
+#'   proportion of permutations whose maximum statistic (or minimum p-value)
+#'   is at least as extreme as the observed one for that test.
+#' * `adjust = "step-down"`: tests are ordered from the most to the least
+#'   extreme and the maximum (or minimum) is taken only over the tests not yet
+#'   rejected, with monotonicity enforced. It is uniformly more powerful than
+#'   the single-step procedure and controls the family-wise error rate under
+#'   the same conditions.
 #'
 #' Adjusted p-values use the Phipson and Smyth (2010) correction. Permutations
 #' in which any model failed to fit are excluded and counted. Tests are
@@ -76,6 +88,7 @@ print.lmmr_spec <- function(x, ...) {
 #' @param unit,exchange,B,seed As in [perm_test()].
 #' @param method Resampling method: `"auto"`, `"relabel"` or
 #'   `"freedman-lane"`. See Details.
+#' @param combine `"auto"`, `"max-t"` or `"min-p"`. See Details.
 #' @param adjust `"step-down"` (default) or `"single-step"`. See Details.
 #'
 #' @return An object of class `lmmr_maxt` with methods for [print()],
@@ -113,11 +126,13 @@ perm_maxt <- function(...,
                       unit,
                       exchange,
                       method = c("auto", "relabel", "freedman-lane"),
+                      combine = c("auto", "max-t", "min-p"),
                       adjust = c("step-down", "single-step"),
                       B = 4999,
                       seed = NULL) {
   call <- match.call()
   method <- match.arg(method)
+  combine <- match.arg(combine)
   adjust <- match.arg(adjust)
   check_count(B, "B", min = 1)
   specs <- list(...)
@@ -134,12 +149,14 @@ perm_maxt <- function(...,
     })
   }
   resampling <- tests[[1]]$method
-  if (any(vapply(tests, function(t) t$type != "t", logical(1)))) {
+  types <- vapply(tests, function(t) t$type, character(1))
+  if (combine == "auto") combine <- if (all(types == "t")) "max-t" else "min-p"
+  if (combine == "max-t" && any(types != "t")) {
     cli::cli_abort(c(
-      "Every tested term must have a single coefficient.",
-      "i" = "Test terms with several coefficients separately with
-             {.fn perm_test}, or choose one coefficient with {.arg coef} in
-             {.fn perm_spec}."
+      "With {.code combine = \"max-t\"} every tested term must have a single
+       coefficient.",
+      "i" = "Use {.code combine = \"min-p\"} to combine statistics on
+             different scales."
     ))
   }
   if (resampling == "relabel") {
@@ -165,7 +182,11 @@ perm_maxt <- function(...,
   }
 
   observed <- vapply(seq_len(k), function(j) {
-    abs(coef_stats(specs[[j]]$model, tests[[j]]$coefs)[[1]])
+    if (types[j] == "chi2") {
+      wald_chi2(specs[[j]]$model, tests[[j]]$coefs)[[1]]
+    } else {
+      abs(coef_stats(specs[[j]]$model, tests[[j]]$coefs)[[1]])
+    }
   }, numeric(1))
   if (anyNA(observed)) {
     cli::cli_abort("The observed statistic is not available for
@@ -181,7 +202,7 @@ perm_maxt <- function(...,
   results <- future.apply::future_lapply(seq_len(B), function(b) {
     out <- lapply(seq_len(k), function(j) {
       safe_refit(refits[[j]], engines[[j]]$make_data(draws[[j]], b),
-                 tests[[j]]$coefs)
+                 tests[[j]]$coefs, types[j])
     })
     if (use_progress) p()
     out
@@ -211,16 +232,25 @@ perm_maxt <- function(...,
   null_used <- null[complete, , drop = FALSE]
 
   p_unadj <- vapply(seq_len(k), function(j) {
-    perm_pvalue(observed[j], null_used[, j], "two.sided")
+    perm_pvalue(observed[j], null_used[, j], "greater")
   }, numeric(1))
-  p_adj <- maxt_adjust(observed, null_used, adjust)
+  p_adj <- if (combine == "max-t") {
+    maxt_adjust(observed, null_used, adjust)
+  } else {
+    minp_adjust(p_unadj, null_used, adjust)
+  }
 
   structure(
     list(
       results = data.frame(
         test = names(specs),
         term = vapply(specs, function(s) s$term, character(1)),
-        coef = vapply(tests, function(t) t$coefs, character(1)),
+        coef = vapply(tests, function(t) paste(t$coefs, collapse = ", "),
+                      character(1)),
+        stat = ifelse(types == "chi2",
+                      paste0("chi2(", vapply(tests, function(t) {
+                        length(t$coefs)
+                      }, integer(1)), ")"), "|t|"),
         statistic = unname(observed),
         p.value = p_unadj,
         p.adjusted = p_adj,
@@ -234,6 +264,7 @@ perm_maxt <- function(...,
       exchange = exchange,
       method = resampling,
       adjust = adjust,
+      combine = combine,
       stat_label = "t",
       n_units = ref$n_units,
       n_blocks = ref$space$n_blocks,
@@ -294,6 +325,36 @@ maxt_adjust <- function(observed, null, method) {
   p
 }
 
+# Westfall-Young min-p adjusted p-values. `p_obs` are the unadjusted
+# permutation p-values; the p-value of each permuted statistic is computed
+# within its own column of `null` (larger statistics are more extreme).
+minp_adjust <- function(p_obs, null, method) {
+  k <- length(p_obs)
+  n <- nrow(null)
+  if (n == 0) return(rep(NA_real_, k))
+  p_null <- apply(null, 2, function(v) {
+    (n - rank(v, ties.method = "min") + 1) / n
+  })
+  p_null <- matrix(p_null, nrow = n)
+  tol <- 1e-12
+  if (method == "single-step") {
+    min_null <- apply(p_null, 1, min)
+    return(vapply(seq_len(k), function(j) {
+      (sum(min_null <= p_obs[j] + tol) + 1) / (n + 1)
+    }, numeric(1)))
+  }
+  ord <- order(p_obs)
+  p <- numeric(k)
+  for (r in seq_len(k)) {
+    j <- ord[r]
+    remaining <- ord[r:k]
+    min_null <- apply(p_null[, remaining, drop = FALSE], 1, min)
+    p[j] <- (sum(min_null <= p_obs[j] + tol) + 1) / (n + 1)
+  }
+  p[ord] <- cummax(p[ord])
+  p
+}
+
 check_specs <- function(specs, call = rlang::caller_env()) {
   if (length(specs) < 2) {
     cli::cli_abort("{.fn perm_maxt} needs at least two specifications.",
@@ -316,8 +377,8 @@ check_specs <- function(specs, call = rlang::caller_env()) {
 
 #' @export
 print.lmmr_maxt <- function(x, digits = 3, ...) {
-  cat("\nFamily-wise permutation tests for `", x$term, "` (max-t, ",
-      x$adjust, ")\n\n", sep = "")
+  cat("\nFamily-wise permutation tests for `", x$term, "` (", x$combine,
+      ", ", x$adjust, ")\n\n", sep = "")
   cat("Method:    ", method_label(x$method), "\n", sep = "")
   cat("Exchange:  ", format(x$exchange, unit = x$unit), " (", x$n_units,
       " units", if (!is.null(x$exchange$block)) {
@@ -328,12 +389,12 @@ print.lmmr_maxt <- function(x, digits = 3, ...) {
   res <- x$results
   tab <- data.frame(
     Test = res$test,
-    Statistic = formatC(res$statistic, digits = digits, format = "f"),
+    Statistic = paste(res$stat, "=",
+                      formatC(res$statistic, digits = digits, format = "f")),
     `p (unadjusted)` = vapply(res$p.value, format_p, character(1)),
     `p (family-wise)` = vapply(res$p.adjusted, format_p, character(1)),
     check.names = FALSE
   )
-  names(tab)[2] <- paste0("|", x$stat_label, "|")
   print(tab, row.names = FALSE, right = FALSE)
   if (x$B < 1000) {
     cat("\nNote: fewer than 1000 permutations; treat these results as",
@@ -361,15 +422,16 @@ tidy.lmmr_maxt <- function(x, type = c("summary", "null"), ...) {
     ))
   }
   out <- x$results
-  out$method <- paste0("max-t (", x$adjust, "), ", x$method)
+  out$method <- paste0(x$combine, " (", x$adjust, "), ", x$method)
   out
 }
 
 #' Plot family-wise permutation tests
 #'
 #' Shows the permutation distribution of the maximum absolute statistic
-#' across tests, with the observed statistic of each test and the critical
-#' value that controls the family-wise error rate at `alpha`.
+#' (max-t) or of the minimum p-value (min-p) across tests, with the observed
+#' value of each test and the critical value that controls the family-wise
+#' error rate at `alpha`.
 #'
 #' @param x An object of class `lmmr_maxt`.
 #' @param alpha Family-wise significance level for the critical value.
@@ -379,10 +441,52 @@ tidy.lmmr_maxt <- function(x, type = c("summary", "null"), ...) {
 plot.lmmr_maxt <- function(x, alpha = 0.05, ...) {
   rlang::check_installed("ggplot2", reason = "to plot results.")
   null <- x$null[stats::complete.cases(x$null), , drop = FALSE]
-  max_null <- apply(null, 1, max)
-  critical <- stats::quantile(max_null, 1 - alpha, names = FALSE)
   obs <- x$results
   obs$significant <- obs$p.adjusted <= alpha
+  if (identical(x$combine, "min-p")) {
+    n <- nrow(null)
+    p_null <- matrix(apply(null, 2, function(v) {
+      (n - rank(v, ties.method = "min") + 1) / n
+    }), nrow = n)
+    min_p <- apply(p_null, 1, min)
+    critical <- stats::quantile(min_p, alpha, names = FALSE)
+    return(
+      ggplot2::ggplot(data.frame(value = min_p),
+                      ggplot2::aes(x = .data$value)) +
+        ggplot2::geom_histogram(bins = 40, fill = "grey75", colour = "white",
+                                linewidth = 0.2) +
+        ggplot2::geom_vline(xintercept = critical, linetype = "dashed",
+                            colour = "grey30") +
+        ggplot2::geom_vline(
+          data = obs,
+          ggplot2::aes(xintercept = .data$p.value, colour = .data$significant),
+          linewidth = 0.8
+        ) +
+        ggplot2::geom_text(
+          data = obs,
+          ggplot2::aes(x = .data$p.value, y = Inf, label = .data$test,
+                       colour = .data$significant),
+          angle = 90, hjust = 1.1, vjust = -0.4, size = 3.2,
+          show.legend = FALSE
+        ) +
+        ggplot2::scale_x_log10() +
+        ggplot2::scale_colour_manual(
+          values = c(`TRUE` = "#C0392B", `FALSE` = "grey20"),
+          labels = c(`TRUE` = "significant", `FALSE` = "not significant"),
+          name = NULL
+        ) +
+        ggplot2::labs(
+          x = "Minimum p-value across tests (log scale)", y = "Permutations",
+          title = "Family-wise null distribution (min-p)",
+          subtitle = paste0("Lines: unadjusted p of each test; dashed: ",
+                            "critical value at family-wise alpha = ", alpha)
+        ) +
+        theme_lmmr() +
+        ggplot2::theme(legend.position = "bottom")
+    )
+  }
+  max_null <- apply(null, 1, max)
+  critical <- stats::quantile(max_null, 1 - alpha, names = FALSE)
   ggplot2::ggplot(data.frame(value = max_null),
                   ggplot2::aes(x = .data$value)) +
     ggplot2::geom_histogram(bins = 50, fill = "grey75", colour = "white",
@@ -406,7 +510,7 @@ plot.lmmr_maxt <- function(x, alpha = 0.05, ...) {
       name = NULL
     ) +
     ggplot2::labs(
-      x = paste0("Maximum |", x$stat_label, "| across tests"),
+      x = "Maximum |t| across tests",
       y = "Permutations",
       title = paste0("Family-wise null distribution: ", x$term),
       subtitle = paste0("Dashed line: critical value at family-wise alpha = ",

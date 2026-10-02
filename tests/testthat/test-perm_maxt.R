@@ -139,8 +139,12 @@ test_that("perm_maxt supports Freedman-Lane with interactions", {
                   seed = 1)
   set.seed(1)
   d$noise <- stats::rnorm(nrow(d))
-  m1 <- lme4::lmer(y ~ condition * time + (1 | participant), data = d)
-  m2 <- lme4::lmer(noise ~ condition * time + (1 | participant), data = d)
+  m1 <- suppressMessages(
+    lme4::lmer(y ~ condition * time + (1 | participant), data = d)
+  )
+  m2 <- suppressMessages(
+    lme4::lmer(noise ~ condition * time + (1 | participant), data = d)
+  )
   res <- perm_maxt(signal = perm_spec(m1, "condition:time"),
                    noise = perm_spec(m2, "condition:time"),
                    unit = "trial", exchange = exch_signflip("participant"),
@@ -179,8 +183,9 @@ test_that("Freedman-Lane families can mix terms and data orders", {
   expect_error(
     perm_maxt(a = perm_spec(m1, "condition"),
               b = perm_spec(m3, "condition:splines::ns(time, 2)"),
-              unit = "trial", exchange = exch_signflip("participant"), B = 9),
-    "single coefficient"
+              unit = "trial", exchange = exch_signflip("participant"),
+              combine = "max-t", B = 9),
+    "single"
   )
   expect_error(
     perm_maxt(a = perm_spec(m1, "condition"), b = perm_spec(m1, "time"),
@@ -188,4 +193,78 @@ test_that("Freedman-Lane families can mix terms and data orders", {
               method = "relabel", B = 9),
     "same variable"
   )
+})
+
+test_that("min-p adjustment follows the definition", {
+  null <- cbind(c(1, 2, 3, 4), c(10, 20, 30, 40))
+  p_obs <- c(perm_pvalue(3.5, null[, 1], "greater"),
+             perm_pvalue(15, null[, 2], "greater"))
+  # Column p-values: c(1, .75, .5, .25) in both columns, so min p = same
+  ss <- minp_adjust(p_obs, null, "single-step")
+  expect_equal(ss, c((1 + 1) / 5, (3 + 1) / 5))
+  sd <- minp_adjust(p_obs, null, "step-down")
+  expect_true(all(sd <= ss))
+  expect_true(all(diff(sd[order(p_obs)]) >= 0))
+  # With identical columns min-p equals max-t
+  null2 <- cbind(c(1, 2, 3, 4), c(1, 2, 3, 4))
+  obs <- c(3.5, 1.5)
+  p2 <- vapply(1:2, function(j) perm_pvalue(obs[j], null2[, j], "greater"),
+               numeric(1))
+  expect_equal(minp_adjust(p2, null2, "single-step"),
+               maxt_adjust(obs, null2, "single-step"))
+})
+
+test_that("min-p combines statistics on different scales", {
+  d <- sim_blocks("within", n_participants = 8, n_trials = 6, n_time = 10,
+                  effect_condition = 1, effect_onset = 0.1, sd_residual = 0.3,
+                  seed = 5)
+  m_lin <- suppressMessages(
+    lme4::lmer(y ~ condition * time + (1 | participant), data = d)
+  )
+  m_spl <- suppressMessages(
+    lme4::lmer(y ~ condition * splines::ns(time, 3) + (1 | participant),
+               data = d)
+  )
+  res <- perm_maxt(linear = perm_spec(m_lin, "condition:time"),
+                   spline = perm_spec(m_spl, "condition:splines::ns(time, 3)"),
+                   unit = "trial", exchange = exch_signflip("participant"),
+                   B = 49, seed = 1)
+  expect_equal(res$combine, "min-p")
+  expect_equal(res$results$stat, c("|t|", "chi2(3)"))
+  expect_true(all(res$results$p.adjusted >= res$results$p.value))
+  expect_output(print(res), "min-p")
+  expect_output(print(res), "chi2\\(3\\)")
+  expect_error(
+    perm_maxt(linear = perm_spec(m_lin, "condition:time"),
+              spline = perm_spec(m_spl, "condition:splines::ns(time, 3)"),
+              unit = "trial", exchange = exch_signflip("participant"),
+              combine = "max-t", B = 9),
+    "single"
+  )
+  skip_if_not_installed("ggplot2")
+  expect_s3_class(plot(res), "ggplot")
+})
+
+test_that("min-p controls the family-wise error rate", {
+  skip_on_cran()
+  n_sim <- 60
+  any_adj <- logical(n_sim)
+  for (i in seq_len(n_sim)) {
+    d <- sim_blocks("within", "trial", n_participants = 10, n_trials = 8,
+                    seed = i)
+    set.seed(i)
+    for (j in 1:4) d[[paste0("f", j)]] <- d$y + stats::rnorm(nrow(d))
+    specs <- lapply(1:4, function(j) {
+      perm_spec(lm(stats::as.formula(paste0("f", j,
+                                            " ~ condition + participant")),
+                   data = d), "condition")
+    })
+    names(specs) <- paste0("f", 1:4)
+    res <- do.call(perm_maxt, c(specs, list(
+      unit = "trial", exchange = exch_signflip("participant"),
+      combine = "min-p", B = 99, seed = i
+    )))
+    any_adj[i] <- any(res$results$p.adjusted <= 0.05)
+  }
+  expect_lt(mean(any_adj), 0.15)
 })

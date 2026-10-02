@@ -9,7 +9,9 @@
 
 * `perm_maxt()` gains `method = "freedman-lane"`, so families of tests can
   include interactions and covariate-adjusted effects, and different terms
-  in different models. The adjustment procedure is now chosen with `adjust`.
+  in different models, and `combine = "min-p"`, which combines statistics on
+  different scales (e.g. t and chi-square). The adjustment procedure is now
+  chosen with `adjust`.
 
 * New `diag_loso()` refits the model leaving out each participant in turn and
   flags influential participants; `diag_agreement()` compares the model
