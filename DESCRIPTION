@@ -7,8 +7,8 @@ Authors@R: c(
            comment = c(ORCID = "0000-0002-8435-2710")),
     person("Hans", "Supèr", role = "aut")
   )
-Description: Permutation and bootstrap inference for linear and generalized
-    linear (mixed-effects) models fitted to block-structured repeated
+Description: Permutation and bootstrap inference for linear and linear
+    mixed-effects models fitted to block-structured repeated
     measurements, such as densely sampled physiological time series
     (pupillometry, eye movements, EEG, fNIRS, heart rate, electrodermal
     activity, electromyography) or features extracted from them per trial or

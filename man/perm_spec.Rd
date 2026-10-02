@@ -7,8 +7,7 @@
 perm_spec(model, term, coef = NULL, data = NULL)
 }
 \arguments{
-\item{model}{A model fitted with \code{\link[stats:lm]{stats::lm()}}, \code{\link[stats:glm]{stats::glm()}},
-\code{\link[lme4:lmer]{lme4::lmer()}} or \code{\link[lme4:glmer]{lme4::glmer()}}.}
+\item{model}{A linear model fitted with \code{\link[stats:lm]{stats::lm()}} or \code{\link[lme4:lmer]{lme4::lmer()}}.}
 
 \item{term}{Fixed-effect term to test, as labelled in the model formula
 (e.g. \code{"condition"} or \code{"condition:time"}). For \code{method = "relabel"} it

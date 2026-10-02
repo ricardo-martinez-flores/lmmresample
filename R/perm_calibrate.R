@@ -39,7 +39,7 @@
 #' @param null Null hypothesis under which data are simulated: `"mean"` or
 #'   `"sharp"`. See Details.
 #' @param ar1 Optional lag-1 autocorrelation of the simulated residuals within
-#'   each `series`, in \eqn{[0, 1)}. Gaussian models only.
+#'   each `series`, in \eqn{[0, 1)}.
 #' @param series,time Names of the columns identifying each series (e.g.
 #'   `"trial"`) and the time order within it. Required when `ar1` is supplied.
 #' @param n_sim Number of simulated data sets.

@@ -20,35 +20,37 @@ It applies to any block-structured signal, including pupillometry, eye
 movements, EEG, fNIRS, heart rate and HRV, electrodermal activity, EMG and
 kinematics, and at any level of aggregation: the full time series, features
 extracted per trial, or one value per participant. Supported models are
-`lm()`, `glm()`, `lme4::lmer()` and `lme4::glmer()`.
+`lm()` and `lme4::lmer()`.
 
 > **Status:** under active development. The interface is not yet stable.
 
-## Planned for version 0.1.0
+## Features
 
-- **Permutation tests** that refit the full model, under
-  user-declared exchangeability: trials within participants, condition labels
-  between participants, or custom strata.
-- **Calibration of the permutation null** by simulating from the user's reduced
-  model, optionally with AR(1) residuals, to verify type I error before
-  interpreting a result.
-- **Family-wise error control** across several model terms with the max-t
-  procedure, using one shared permutation for all terms, for example across
+Available now:
+
+- **Permutation tests** that refit the full model, under user-declared
+  exchangeability: trials within participants, condition labels between
+  participants, sign-flipping of whole participants, or custom strata.
+- **Freedman–Lane permutation** of the residuals of the reduced model, for
+  tests of interactions (e.g. condition × time), of terms with several
+  coefficients and of effects adjusted for covariates.
+- **Calibration of the permutation test** by simulating from the user's own
+  model under the null hypothesis, optionally with AR(1) residuals, to check
+  type I error for the actual design before interpreting a result.
+- **Family-wise error control** across several outcomes with the max-t
+  procedure, using one shared permutation for all tests, for example across
   several features extracted from the same trials.
-- **Bootstrap confidence intervals** with a choice of resampling scheme
-  (cluster/case or wild) and interval type (percentile, BCa).
-- **Diagnostics:** leave-one-subject-out influence and a coefficient agreement
-  check that flags when the model coefficient diverges from the mean
-  participant-level difference.
-- **Diagnostic plots** for every result: null and bootstrap distributions,
-  calibration of p-values, leave-one-subject-out influence and residual
-  autocorrelation.
-- Parallel computation through the `future` framework, with reproducible
-  seeds.
+- **Simulation of block-structured data** with known effects, for examples,
+  power analysis and checking an analysis pipeline.
+- **Plots** for every result and parallel computation through the `future`
+  framework, with reproducible seeds.
 
-Planned for version 0.2: Freedman–Lane / ter Braak permutation with
-covariates (including tests of interactions), F / likelihood-ratio statistics
-for multi-level factors, and `glmmTMB` models.
+In development:
+
+- **Bootstrap confidence intervals** with a choice of resampling scheme
+  (cluster or wild) and interval type (percentile, BCa).
+- **Diagnostics:** leave-one-subject-out influence, residual autocorrelation,
+  residual time courses by condition, and a coefficient agreement check.
 
 ## Installation
 

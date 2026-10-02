@@ -18,17 +18,15 @@
 #'   1983; Winkler et al., 2014). It accounts for nuisance terms and allows
 #'   tests of interactions (e.g. `"condition:time"`) and of terms with several
 #'   coefficients. Random slopes of `term` are removed from the reduced model,
-#'   because they would absorb the tested effect. Available for Gaussian
-#'   responses. Permuting residuals between units requires units of equal
+#'   because they would absorb the tested effect. Permuting residuals between units requires units of equal
 #'   size within blocks; sign-flipping accepts units of any size.
 #'
 #' With `method = "auto"` (default), relabelling is used for a main effect that
 #' is a column of the data with a single coefficient, and Freedman-Lane
 #' otherwise.
 #'
-#' The statistic is the Wald statistic of the coefficient (estimate divided by
-#' its standard error): a *t* value for linear models and a *z* value for
-#' non-Gaussian generalized models. When the term has several coefficients
+#' The statistic is the Wald statistic of the coefficient (its *t* value:
+#' estimate divided by its standard error). When the term has several coefficients
 #' (a factor with more than two levels, or an interaction with a spline of
 #' time), the statistic is the Wald chi-square of all of them and the test is
 #' two-sided. Refits keep every argument of the original call; only the data
@@ -50,8 +48,7 @@
 #' Terms contained in a higher-order interaction are refused: test the
 #' interaction first.
 #'
-#' @param model A model fitted with [stats::lm()], [stats::glm()],
-#'   [lme4::lmer()] or [lme4::glmer()].
+#' @param model A linear model fitted with [stats::lm()] or [lme4::lmer()].
 #' @param term Fixed-effect term to test, as labelled in the model formula
 #'   (e.g. `"condition"` or `"condition:time"`). For `method = "relabel"` it
 #'   must be a column of the data, constant within each `unit`.

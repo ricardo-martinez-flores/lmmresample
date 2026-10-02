@@ -23,8 +23,7 @@ perm_calibrate(
 )
 }
 \arguments{
-\item{model}{A model fitted with \code{\link[stats:lm]{stats::lm()}}, \code{\link[stats:glm]{stats::glm()}},
-\code{\link[lme4:lmer]{lme4::lmer()}} or \code{\link[lme4:glmer]{lme4::glmer()}}.}
+\item{model}{A linear model fitted with \code{\link[stats:lm]{stats::lm()}} or \code{\link[lme4:lmer]{lme4::lmer()}}.}
 
 \item{term}{Fixed-effect term to test, as labelled in the model formula
 (e.g. \code{"condition"} or \code{"condition:time"}). For \code{method = "relabel"} it
@@ -45,7 +44,7 @@ default all coefficients of the term are tested jointly.}
 \code{"sharp"}. See Details.}
 
 \item{ar1}{Optional lag-1 autocorrelation of the simulated residuals within
-each \code{series}, in \eqn{[0, 1)}. Gaussian models only.}
+each \code{series}, in \eqn{[0, 1)}.}
 
 \item{series, time}{Names of the columns identifying each series (e.g.
 \code{"trial"}) and the time order within it. Required when \code{ar1} is supplied.}

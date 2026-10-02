@@ -39,12 +39,16 @@ declared exchangeability change.
 | Full time series (samples within trials) | `lmer`, many rows per trial | trial, within participant | participant |
 | Feature per trial (peak, latency, area) | `lmer`, one row per trial | trial, within participant | participant |
 | Feature per participant × condition | `lmer`, random intercept | condition label, within participant | participant |
-| Feature per participant | `lm` / `glm` | group label, between participants | participant |
+| Feature per participant | `lm` | group label, between participants | participant |
 
 ### 1.4 Supported models
 
-v0.1: `stats::lm`, `stats::glm`, `lme4::lmer`, `lme4::glmer`.
-Later: `glmmTMB::glmmTMB`.
+`stats::lm` and `lme4::lmer` (linear models with a continuous response).
+Generalized linear (mixed) models were removed from the scope on 2026-10-02:
+Freedman–Lane residual permutation does not apply to them, and supporting
+only part of the functionality for them would be inconsistent. A possible
+future extension is sign-flipping of score contributions (Hemerik, Goeman &
+Finos, 2020).
 
 Refitting uses `stats::update()` with a modified `data` argument, so the
 package relies only on the model object exposing its call and data.
@@ -101,8 +105,8 @@ autocompletion.
 | Simulation | `sim_blocks()` | Simulate block-structured data for examples, power and calibration |
 
 Note: earlier drafts used `perm_lmer()`, `boot_lmer()`, `maxt_lmer()` and
-`loso_lmer()`. The names were generalised because `lm` and `glm` models are
-now supported.
+`loso_lmer()`. The names were generalised because `lm` models are also
+supported.
 
 ---
 
@@ -167,7 +171,8 @@ perm_test(
   `term` maps to a single coefficient (numeric or two-level factor); required
   otherwise. Multi-level factors (F / likelihood-ratio statistics) are planned
   for a later version.
-- Statistic: the t (or z for `glm`/`glmer`) value of `coef`.
+- Statistic: the t value of `coef`; a joint Wald chi-square for terms with
+  several coefficients.
 - p-value: Phipson–Smyth, *p* = (*b* + 1) / (*B*′ + 1), where *B*′ is the
   number of successful refits.
 - `data`: defaults to the data stored in the model call; needed only if the
@@ -485,8 +490,8 @@ Everything specified in sections 3–8.
   provides valid tests of interactions (e.g. `group × condition` in mixed
   designs). Calibration is mandatory in the documentation of these methods.
 - F / likelihood-ratio statistics for multi-level factors and their
-  interactions, in `perm_test()` and `perm_maxt()`.
-- `glmmTMB` models.
+  interactions, in `perm_test()` and `perm_maxt()` (joint Wald chi-square
+  already implemented in `perm_test()`).
 
 **Not planned**
 - Temporal block bootstrap within a single long series without block

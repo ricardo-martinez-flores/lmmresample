@@ -1,5 +1,9 @@
 # lmmresample 0.0.0.9000
 
+* The package now supports linear models only (`lm()` and `lme4::lmer()`).
+  Generalized linear (mixed) models are refused with an informative message,
+  because residual permutation does not apply to them.
+
 * `perm_test()` and `perm_calibrate()` gain `method = "freedman-lane"`:
   residuals of the reduced model are permuted between whole units or
   sign-flipped by block, which allows tests of interactions (e.g.
@@ -24,7 +28,7 @@
 
 * New `perm_test()` tests a fixed-effect term by permuting it across whole
   units (trials or participants) and refitting the full model. Supports
-  `lm()`, `glm()`, `lme4::lmer()` and `lme4::glmer()` models, runs in parallel
+  `lm()` and `lme4::lmer()` models, runs in parallel
   through the future framework, and records failed, non-convergent and
   singular refits. Results have `print()`, `summary()`, `tidy()` and `plot()`
   methods, including a trace plot of the running p-value.

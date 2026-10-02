@@ -77,21 +77,6 @@ test_that("AR(1) residuals have the requested autocorrelation", {
   expect_equal(mean(lag1), 0.8, tolerance = 0.03)
 })
 
-test_that("binomial and Poisson models can be calibrated", {
-  d <- calib_data()
-  d$high <- as.integer(d$y > stats::median(d$y))
-  d$count <- stats::rpois(nrow(d), 3)
-  ex <- exch_within("participant")
-  c_bin <- perm_calibrate(glm(high ~ condition, family = binomial, data = d),
-                          "condition", "trial", ex, n_sim = 3, B = 9,
-                          seed = 1)
-  c_poi <- perm_calibrate(glm(count ~ condition, family = poisson, data = d),
-                          "condition", "trial", ex, n_sim = 3, B = 9,
-                          seed = 1)
-  expect_s3_class(c_bin, "lmmr_calib")
-  expect_s3_class(c_poi, "lmmr_calib")
-})
-
 test_that("invalid calibrations are refused", {
   d <- calib_data()
   ex <- exch_within("participant")
@@ -108,11 +93,6 @@ test_that("invalid calibrations are refused", {
   expect_error(perm_calibrate(m_log, "condition", "trial", ex),
                "column of the data")
 
-  d$high <- as.integer(d$y > 0)
-  m_bin <- glm(high ~ condition, family = binomial, data = d)
-  expect_error(perm_calibrate(m_bin, "condition", "trial", ex, ar1 = 0.5,
-                              series = "trial", time = "trial_index"),
-               "Gaussian")
 })
 
 test_that("print, tidy and plot methods work", {

@@ -35,9 +35,6 @@ test_that("method selection follows the term", {
                "relabel")
   expect_error(resolve_test(m, d, "condition", NULL, "auto"),
                "higher-order term")
-  d$high <- as.integer(d$y > 0)
-  g <- glm(high ~ condition + time, family = binomial, data = d)
-  expect_error(resolve_test(g, d, "time", NULL, "freedman-lane"), "Gaussian")
 })
 
 test_that("Freedman-Lane tests an interaction with sign-flipping", {

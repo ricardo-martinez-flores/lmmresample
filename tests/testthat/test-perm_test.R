@@ -63,30 +63,24 @@ test_that("one-sided alternatives use the correct tail", {
   expect_true(is.na(perm_pvalue(1, numeric(0), "two.sided")))
 })
 
-test_that("lm, glm, lmer and glmer models are supported", {
+test_that("lm and lmer models are supported; generalized models are not", {
   d <- within_trials(effect = 0.5)
   d$high <- as.integer(d$y > stats::median(d$y))
   ex <- exch_within("participant")
 
   r_lm <- perm_test(lm(y ~ condition + participant, data = d),
                     "condition", "trial", ex, B = 19, seed = 1)
-  r_glm <- perm_test(glm(high ~ condition, family = binomial, data = d),
-                     "condition", "trial", ex, B = 19, seed = 1)
   r_lmer <- perm_test(lme4::lmer(y ~ condition + (1 | participant), data = d),
                       "condition", "trial", ex, B = 19, seed = 1)
-  r_glmer <- suppressMessages(perm_test(
-    lme4::glmer(high ~ condition + (1 | participant), family = binomial,
-                data = d),
-    "condition", "trial", ex, B = 19, seed = 1
-  ))
-
   expect_equal(r_lm$stat_label, "t")
-  expect_equal(r_glm$stat_label, "z")
   expect_equal(r_lmer$stat_label, "t")
-  expect_equal(r_glmer$stat_label, "z")
-  for (r in list(r_lm, r_glm, r_lmer, r_glmer)) {
-    expect_true(r$B_used > 0)
-  }
+  expect_true(r_lm$B_used > 0 && r_lmer$B_used > 0)
+
+  expect_error(perm_test(glm(high ~ condition, family = binomial, data = d),
+                         "condition", "trial", ex), "linear model")
+  g <- suppressMessages(lme4::glmer(high ~ condition + (1 | participant),
+                                    family = binomial, data = d))
+  expect_error(perm_test(g, "condition", "trial", ex), "linear model")
 })
 
 test_that("between-group designs permute participants", {
@@ -115,7 +109,7 @@ test_that("invalid tests are refused with informative errors", {
   expect_error(perm_test(m_int, "condition", "trial", ex), "interaction")
 
 
-  expect_error(perm_test(list(), "condition", "trial", ex), "must be a model")
+  expect_error(perm_test(list(), "condition", "trial", ex), "linear model")
 
   m_sub <- lm(y ~ condition, data = d, subset = trial_index > 2)
   expect_error(perm_test(m_sub, "condition", "trial", ex), "rows")

@@ -1,13 +1,14 @@
 # Model support ------------------------------------------------------------
 
-supported_classes <- c("lmerMod", "glmerMod", "glm", "lm")
-
 check_model <- function(model, call = rlang::caller_env()) {
-  if (!inherits(model, supported_classes)) {
+  ok <- (inherits(model, "lm") && !inherits(model, "glm")) ||
+    inherits(model, "lmerMod")
+  if (!ok) {
     cli::cli_abort(c(
-      "{.arg model} must be a model fitted with {.fn lm}, {.fn glm},
-       {.fn lme4::lmer} or {.fn lme4::glmer}.",
-      "x" = "It has class {.cls {class(model)}}."
+      "{.arg model} must be a linear model fitted with {.fn lm} or
+       {.fn lme4::lmer}.",
+      "x" = "It has class {.cls {class(model)}}.",
+      "i" = "Generalized linear (mixed) models are not supported."
     ), call = call)
   }
   invisible(model)
@@ -140,17 +141,7 @@ coef_stats <- function(fit, coefs) {
   out
 }
 
-stat_label <- function(model) {
-  if (inherits(model, "glmerMod")) return("z")
-  if (inherits(model, "glm")) {
-    fam <- stats::family(model)$family
-    if (!fam %in% c("gaussian", "Gamma", "inverse.gaussian", "quasi",
-                    "quasibinomial", "quasipoisson")) {
-      return("z")
-    }
-  }
-  "t"
-}
+stat_label <- function(model) "t"
 
 # Map a variable name to its coefficient(s), refusing interactions.
 resolve_coef <- function(model, term, coef = NULL, call = rlang::caller_env()) {

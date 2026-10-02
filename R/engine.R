@@ -38,7 +38,6 @@ resolve_test <- function(model, data, term, coef, method,
                the interaction is in the model."
       ), call = call)
     }
-    check_gaussian(model, call = call)
     coefs <- if (is.null(coef)) info$coefs else {
       if (!all(coef %in% info$coefs)) {
         cli::cli_abort(c(
@@ -79,19 +78,6 @@ term_info <- function(model, term, call = rlang::caller_env()) {
   list(coefs = coefs, higher = unlist(higher),
        in_interaction = length(higher) > 0,
        is_column = length(my_vars) == 1 && my_vars == term)
-}
-
-check_gaussian <- function(model, call = rlang::caller_env()) {
-  fam <- model_family(model)
-  if (!(fam$family == "gaussian" && fam$link == "identity")) {
-    cli::cli_abort(c(
-      "Permutation of residuals (Freedman-Lane) is available for linear
-       models with a Gaussian response.",
-      "i" = "For this model, test a main effect without nuisance terms by
-             relabelling ({.code method = \"relabel\"})."
-    ), call = call)
-  }
-  invisible(model)
 }
 
 # Reduced model formula: the tested term is removed from the fixed effects

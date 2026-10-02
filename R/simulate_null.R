@@ -14,22 +14,7 @@ make_null_simulator <- function(model, data, coef, null, ar1 = NULL,
   beta[coef] <- 0
   eta_fixed <- as.vector(X %*% beta)
 
-  family <- model_family(model)
-  gaussian <- family$family == "gaussian" && family$link == "identity"
-  if (!gaussian && !family$family %in% c("binomial", "poisson")) {
-    cli::cli_abort(
-      "Calibration is available for Gaussian, binomial and Poisson models,
-       not {.val {family$family}}.",
-      call = call
-    )
-  }
-  if (!is.null(ar1) && !gaussian) {
-    cli::cli_abort(
-      "{.arg ar1} applies only to Gaussian models with an identity link.",
-      call = call
-    )
-  }
-  sigma <- if (gaussian) stats::sigma(model) else NA_real_
+  sigma <- stats::sigma(model)
 
   # Random effects: b = Lambda u, with Lambda built from (modified) theta
   if (is_mixed(model)) {
@@ -40,33 +25,21 @@ make_null_simulator <- function(model, data, coef, null, ar1 = NULL,
     Lt <- lme4::getME(model, "Lambdat")
     Lt@x <- theta[lme4::getME(model, "Lind")]
     Z <- lme4::getME(model, "Z")
-    u_scale <- if (gaussian) sigma else 1
     draw_re <- function() {
-      u <- stats::rnorm(ncol(Z), 0, u_scale)
+      u <- stats::rnorm(ncol(Z), 0, sigma)
       as.vector(Z %*% Matrix::crossprod(Lt, u))
     }
   } else {
     draw_re <- function() 0
   }
 
-  draw_resid <- if (!gaussian) {
-    NULL
-  } else if (is.null(ar1)) {
+  draw_resid <- if (is.null(ar1)) {
     function() stats::rnorm(length(eta_fixed), 0, sigma)
   } else {
     ar1_resid_fun(data, series, time, ar1, sigma, call = call)
   }
 
-  weights <- stats::weights(model)
-  if (is.null(weights)) weights <- rep(1, length(eta_fixed))
-
-  function() {
-    eta <- eta_fixed + draw_re()
-    if (gaussian) return(eta + draw_resid())
-    mu <- family$linkinv(eta)
-    if (family$family == "poisson") return(stats::rpois(length(mu), mu))
-    stats::rbinom(length(mu), weights, mu) / weights
-  }
+  function() eta_fixed + draw_re() + draw_resid()
 }
 
 # Zero the rows of the relative covariance factor that belong to `coef`, so
@@ -133,9 +106,4 @@ response_name <- function(model, call = rlang::caller_env()) {
     ), call = call)
   }
   as.character(lhs)
-}
-
-model_family <- function(model) {
-  if (inherits(model, c("glm", "glmerMod"))) return(stats::family(model))
-  stats::gaussian()
 }
