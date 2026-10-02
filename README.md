@@ -26,8 +26,6 @@ extracted per trial, or one value per participant. Supported models are
 
 ## Features
 
-Available now:
-
 - **Permutation tests** that refit the full model, under user-declared
   exchangeability: trials within participants, condition labels between
   participants, sign-flipping of whole participants, or custom strata.
@@ -40,17 +38,15 @@ Available now:
 - **Family-wise error control** across several outcomes with the max-t
   procedure, using one shared permutation for all tests, for example across
   several features extracted from the same trials.
+- **Bootstrap confidence intervals** by resampling whole participants (case
+  or wild bootstrap), with percentile, BCa and basic intervals.
+- **Diagnostics:** residual autocorrelation, residual time courses by
+  condition, leave-one-participant-out influence, and agreement between the
+  model coefficient and participant-level differences.
 - **Simulation of block-structured data** with known effects, for examples,
   power analysis and checking an analysis pipeline.
 - **Plots** for every result and parallel computation through the `future`
   framework, with reproducible seeds.
-
-In development:
-
-- **Bootstrap confidence intervals** with a choice of resampling scheme
-  (cluster or wild) and interval type (percentile, BCa).
-- **Diagnostics:** leave-one-subject-out influence, residual autocorrelation,
-  residual time courses by condition, and a coefficient agreement check.
 
 ## Installation
 

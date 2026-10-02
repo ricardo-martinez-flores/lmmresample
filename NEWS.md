@@ -1,5 +1,12 @@
 # lmmresample 0.0.0.9000
 
+* New `boot_ci()` computes bootstrap confidence intervals for fixed effects by
+  resampling whole clusters (case bootstrap, with repeated clusters and
+  nested units relabelled) or by cluster wild bootstrap with Rademacher
+  weights. Percentile, BCa (jackknife acceleration over clusters) and basic
+  intervals; `confint()` returns any type without refitting. Random effects
+  crossed with the cluster trigger a warning.
+
 * `perm_maxt()` gains `method = "freedman-lane"`, so families of tests can
   include interactions and covariate-adjusted effects, and different terms
   in different models. The adjustment procedure is now chosen with `adjust`.
