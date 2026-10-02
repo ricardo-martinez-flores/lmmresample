@@ -35,6 +35,7 @@
 #' narrows the confidence interval of the rejection rate.
 #'
 #' @inheritParams perm_test
+#' @param method Resampling method, as in [perm_test()].
 #' @param null Null hypothesis under which data are simulated: `"mean"` or
 #'   `"sharp"`. See Details.
 #' @param ar1 Optional lag-1 autocorrelation of the simulated residuals within
@@ -69,6 +70,7 @@ perm_calibrate <- function(model,
                            unit,
                            exchange,
                            coef = NULL,
+                           method = c("auto", "relabel", "freedman-lane"),
                            null = c("mean", "sharp"),
                            ar1 = NULL,
                            series = NULL,
@@ -81,6 +83,7 @@ perm_calibrate <- function(model,
   call <- match.call()
   check_model(model)
   check_column_name(term, "term")
+  method <- match.arg(method)
   null <- match.arg(null)
   check_count(n_sim, "n_sim", min = 1)
   check_count(B, "B", min = 1)
@@ -92,18 +95,13 @@ perm_calibrate <- function(model,
   }
 
   data <- model_data(model, data)
-  coef <- resolve_coef(model, term, coef)
-  ub <- build_units(data, term, unit, exchange)
-  units <- ub$units
-  row_unit <- ub$row_unit
-  values <- data[[term]][units$value_row]
-  enc <- encode_values(values, exchange)
-  n_perm <- count_permutations(values, units$block, exchange$type)
-  check_permutation_space(n_perm, B, exchange, unit)
+  test <- resolve_test(model, data, term, coef, method)
+  engine <- build_engine(model, data, term, test, unit, exchange)
+  check_permutation_space(engine$space, B, exchange, unit)
 
   response <- response_name(model)
-  simulate_y <- make_null_simulator(model, data, coef, null, ar1, series,
-                                    time)
+  simulate_y <- make_null_simulator(model, data, test$coefs, null, ar1,
+                                    series, time)
   refit <- make_refitter(model)
   label <- stat_label(model)
   df_resid <- if (inherits(model, "lm")) stats::df.residual(model) else Inf
@@ -116,9 +114,8 @@ perm_calibrate <- function(model,
     out <- with_seed(sim_seeds[i], {
       sim_data <- data
       sim_data[[response]] <- simulate_y()
-      relabels <- generate_relabels(enc$codes, units$block, exchange$type, B)
-      calibrate_one(refit, sim_data, term, enc$distinct, row_unit, relabels,
-                    coef, df_resid, label)
+      calibrate_one(model, refit, sim_data, term, test, unit, exchange, B,
+                    df_resid, label)
     })
     if (use_progress) p()
     out
@@ -141,7 +138,8 @@ perm_calibrate <- function(model,
       ar1 = ar1,
       series = series,
       term = term,
-      coef = coef,
+      coef = test$coefs,
+      method = test$method,
       unit = unit,
       exchange = exchange,
       n_sim = n_sim,
@@ -155,26 +153,34 @@ perm_calibrate <- function(model,
 
 # One simulated data set: observed statistic, Wald p-value and permutation
 # p-value, with refits run sequentially (parallelism is over simulations).
-calibrate_one <- function(refit, sim_data, term, distinct, row_unit,
-                          relabels, coef, df_resid, label) {
-  obs <- safe_refit(refit, sim_data, coef)
-  if (obs$status %in% c("failed", "nonconverged")) {
-    return(list(p_perm = NA_real_, p_wald = NA_real_, B_used = 0))
-  }
-  t_obs <- obs$stat[[1]]
-  p_wald <- if (label == "t" && is.finite(df_resid)) {
-    2 * stats::pt(-abs(t_obs), df_resid)
+calibrate_one <- function(model, refit, sim_data, term, test, unit, exchange,
+                          B, df_resid, label) {
+  failed <- list(p_perm = NA_real_, p_wald = NA_real_, B_used = 0)
+  obs <- safe_refit(refit, sim_data, test$coefs, test$type)
+  if (obs$status %in% c("failed", "nonconverged")) return(failed)
+  stat_obs <- obs$stat[[1]]
+  p_wald <- if (test$type == "chi2") {
+    stats::pchisq(stat_obs, df = length(test$coefs), lower.tail = FALSE)
+  } else if (label == "t" && is.finite(df_resid)) {
+    2 * stats::pt(-abs(stat_obs), df_resid)
   } else {
-    2 * stats::pnorm(-abs(t_obs))
+    2 * stats::pnorm(-abs(stat_obs))
   }
-  null <- vapply(seq_len(ncol(relabels)), function(b) {
-    newdata <- sim_data
-    newdata[[term]] <- distinct[relabels[, b]][row_unit]
-    res <- safe_refit(refit, newdata, coef)
+  engine <- tryCatch(
+    suppressWarnings(build_engine(model, sim_data, term, test, unit,
+                                  exchange)),
+    error = function(e) NULL
+  )
+  if (is.null(engine)) return(failed)
+  draws <- engine$draw(B)
+  null <- vapply(seq_len(B), function(b) {
+    res <- safe_refit(refit, engine$make_data(draws, b), test$coefs,
+                      test$type)
     if (res$status %in% c("failed", "nonconverged")) NA_real_ else res$stat[[1]]
   }, numeric(1))
   null <- null[!is.na(null)]
-  list(p_perm = perm_pvalue(t_obs, null, "two.sided"), p_wald = p_wald,
+  alt <- if (test$type == "chi2") "greater" else "two.sided"
+  list(p_perm = perm_pvalue(stat_obs, null, alt), p_wald = p_wald,
        B_used = length(null))
 }
 
@@ -285,7 +291,7 @@ plot.lmmr_calib <- function(x, type = c("pp", "rejection"), ...) {
         ggplot2::scale_y_continuous(limits = c(0, NA)) +
         ggplot2::labs(
           x = NULL, y = "Rejection rate under the null",
-          title = paste0("Type I error: ", x$coef),
+          title = paste0("Type I error: ", x$term),
           subtitle = paste0("Dashed line: alpha = ", x$alpha, "; ", x$n_sim,
                             " simulations, 95% exact intervals")
         ) +
@@ -319,7 +325,7 @@ plot.lmmr_calib <- function(x, type = c("pp", "rejection"), ...) {
     ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
     ggplot2::labs(
       x = "Expected p-value (uniform)", y = "Observed p-value",
-      title = paste0("Calibration of p-values: ", x$coef),
+      title = paste0("Calibration of p-values: ", x$term),
       subtitle = "A calibrated test follows the diagonal (band: 95% pointwise)"
     ) +
     theme_lmmr() +

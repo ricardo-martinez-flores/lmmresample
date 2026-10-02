@@ -10,12 +10,12 @@ perm_spec(model, term, coef = NULL, data = NULL)
 \item{model}{A model fitted with \code{\link[stats:lm]{stats::lm()}}, \code{\link[stats:glm]{stats::glm()}},
 \code{\link[lme4:lmer]{lme4::lmer()}} or \code{\link[lme4:glmer]{lme4::glmer()}}.}
 
-\item{term}{Name of the variable to test. It must be a fixed-effect term
-of \code{model} and a column of the data, constant within each \code{unit}.}
+\item{term}{Fixed-effect term to test, as labelled in the model formula
+(e.g. \code{"condition"} or \code{"condition:time"}). For \code{method = "relabel"} it
+must be a column of the data, constant within each \code{unit}.}
 
-\item{coef}{Name of the coefficient used as the test statistic. Needed only
-when \code{term} corresponds to several coefficients (a factor with more than
-two levels).}
+\item{coef}{Optional name of the coefficient(s) of \code{term} to test. By
+default all coefficients of the term are tested jointly.}
 
 \item{data}{The data used to fit \code{model}. Needed only if it cannot be
 recovered from the model call.}

@@ -1,0 +1,229 @@
+# Resampling engines --------------------------------------------------------
+#
+# An engine knows how to build B resampled data sets for one test. Two
+# engines are available:
+#
+# * "relabel": the values of the tested variable are permuted (or swapped
+#   by block) across whole units. Exact for a main effect without nuisance
+#   terms correlated with it.
+# * "freedman-lane": the reduced model (without the tested term) is fitted,
+#   and its residuals are permuted across whole units, or sign-flipped by
+#   block, before being added back to its fitted values (Freedman & Lane,
+#   1983; Winkler et al., 2014). Valid in the presence of nuisance terms and
+#   for interactions and terms with several coefficients.
+
+# Choose the method, resolve the coefficients and the type of statistic.
+resolve_test <- function(model, data, term, coef, method,
+                         call = rlang::caller_env()) {
+  info <- term_info(model, term, call = call)
+  if (method == "auto") {
+    simple <- info$is_column && !info$in_interaction && is.null(coef) &&
+      length(info$coefs) == 1
+    method <- if (simple || (info$is_column && !info$in_interaction &&
+                             !is.null(coef))) {
+      "relabel"
+    } else {
+      "freedman-lane"
+    }
+  }
+  if (method == "relabel") {
+    coefs <- resolve_coef(model, term, coef, call = call)
+  } else {
+    if (info$in_interaction) {
+      cli::cli_abort(c(
+        "{.val {term}} is contained in a higher-order term
+         ({.val {info$higher}}).",
+        "i" = "Test the highest-order interaction first; the meaning of a
+               lower-order term depends on how the variables are coded when
+               the interaction is in the model."
+      ), call = call)
+    }
+    check_gaussian(model, call = call)
+    coefs <- if (is.null(coef)) info$coefs else {
+      if (!all(coef %in% info$coefs)) {
+        cli::cli_abort(c(
+          "{.val {coef}} is not a coefficient of {.val {term}}.",
+          "i" = "Available: {.val {info$coefs}}."
+        ), call = call)
+      }
+      coef
+    }
+  }
+  list(method = method, coefs = coefs,
+       type = if (length(coefs) > 1) "chi2" else "t")
+}
+
+# Coefficients of a fixed-effect term and its position in the hierarchy.
+term_info <- function(model, term, call = rlang::caller_env()) {
+  tt <- stats::terms(model)
+  labels <- attr(tt, "term.labels")
+  factors <- attr(tt, "factors")
+  if (!term %in% labels) {
+    cli::cli_abort(c(
+      "{.val {term}} is not a fixed-effect term of the model.",
+      "i" = "Fixed-effect terms: {.val {labels}}."
+    ), call = call)
+  }
+  vars_of <- function(lab) rownames(factors)[factors[, lab] > 0]
+  my_vars <- vars_of(term)
+  higher <- Filter(function(lab) {
+    lab != term && all(my_vars %in% vars_of(lab))
+  }, labels)
+
+  mm <- stats::model.matrix(model)
+  assign <- attr(mm, "assign")
+  coefs <- colnames(mm)[assign == match(term, labels)]
+  est <- if (is_mixed(model)) lme4::fixef(model) else stats::coef(model)
+  coefs <- intersect(coefs, names(est)[!is.na(est)])
+
+  list(coefs = coefs, higher = unlist(higher),
+       in_interaction = length(higher) > 0,
+       is_column = length(my_vars) == 1 && my_vars == term)
+}
+
+check_gaussian <- function(model, call = rlang::caller_env()) {
+  fam <- model_family(model)
+  if (!(fam$family == "gaussian" && fam$link == "identity")) {
+    cli::cli_abort(c(
+      "Permutation of residuals (Freedman-Lane) is available for linear
+       models with a Gaussian response.",
+      "i" = "For this model, test a main effect without nuisance terms by
+             relabelling ({.code method = \"relabel\"})."
+    ), call = call)
+  }
+  invisible(model)
+}
+
+# Reduced model formula: the tested term is removed from the fixed effects
+# and from any random-effects term in which it appears as a slope, because a
+# random slope of the tested term would absorb the effect into the
+# predicted random effects and leak it into the fitted values.
+reduced_formula <- function(model, term) {
+  f <- stats::formula(model)
+  env <- environment(f)
+  drop_label <- function(rhs, label) {
+    tt <- stats::terms(stats::as.formula(paste("~", rhs)))
+    labs <- setdiff(attr(tt, "term.labels"), label)
+    int <- attr(tt, "intercept") == 1
+    if (length(labs) == 0) return(if (int) "1" else "0")
+    paste(c(if (!int) "0", labs), collapse = " + ")
+  }
+  lhs <- deparse(f[[2]])
+  if (!is_mixed(model)) {
+    rhs <- drop_label(paste(deparse(f[[3]], width.cutoff = 500L),
+                            collapse = " "), term)
+    return(stats::as.formula(paste(lhs, "~", rhs), env = env))
+  }
+  fixed <- lme4::nobars(f)
+  fixed_rhs <- drop_label(paste(deparse(fixed[[3]], width.cutoff = 500L),
+                                collapse = " "), term)
+  bars <- vapply(lme4::findbars(f), function(bar) {
+    bar_lhs <- paste(deparse(bar[[2]], width.cutoff = 500L), collapse = " ")
+    group <- paste(deparse(bar[[3]], width.cutoff = 500L), collapse = " ")
+    paste0("(", drop_label(bar_lhs, term), " | ", group, ")")
+  }, character(1))
+  stats::as.formula(paste(lhs, "~", paste(c(fixed_rhs, bars),
+                                          collapse = " + ")), env = env)
+}
+
+# Build an engine for one data set -----------------------------------------
+
+build_engine <- function(model, data, term, test, unit, exchange,
+                         call = rlang::caller_env()) {
+  if (test$method == "relabel") {
+    relabel_engine(data, term, unit, exchange, call = call)
+  } else {
+    fl_engine(model, data, term, unit, exchange, call = call)
+  }
+}
+
+relabel_engine <- function(data, term, unit, exchange,
+                           call = rlang::caller_env()) {
+  ub <- build_units(data, term, unit, exchange, call = call)
+  values <- data[[term]][ub$units$value_row]
+  enc <- encode_values(values, exchange, call = call)
+  space <- count_permutations(values, ub$units$block, exchange$type)
+  list(
+    space = space,
+    n_units = nrow(ub$units),
+    draw = function(B) {
+      generate_relabels(enc$codes, ub$units$block, exchange$type, B)
+    },
+    make_data = function(draws, b) {
+      newdata <- data
+      newdata[[term]] <- enc$distinct[draws[, b]][ub$row_unit]
+      newdata
+    }
+  )
+}
+
+fl_engine <- function(model, data, term, unit, exchange,
+                      call = rlang::caller_env()) {
+  response <- response_name(model, call = call)
+  ub <- build_units(data, NULL, unit, exchange, call = call)
+  units <- ub$units
+  row_unit <- ub$row_unit
+
+  # Reduced model fitted to these data
+  reduced <- make_refitter(model, formula = reduced_formula(model, term),
+                           call = call)
+  fit_r <- suppressWarnings(suppressMessages(
+    tryCatch(reduced(data), error = function(e) e)
+  ))
+  if (inherits(fit_r, "error")) {
+    cli::cli_abort(c(
+      "The reduced model (without {.val {term}}) could not be fitted.",
+      "x" = conditionMessage(fit_r)
+    ), call = call)
+  }
+  fitted_r <- as.vector(stats::fitted(fit_r))
+  resid_r <- data[[response]] - fitted_r
+
+  # Position of each row within its unit, and rows of each unit
+  ord <- order(row_unit, seq_along(row_unit))
+  sizes <- tabulate(row_unit, nbins = nrow(units))
+  offsets <- c(0, cumsum(sizes))[seq_len(nrow(units))]
+  pos <- integer(length(row_unit))
+  pos[ord] <- sequence(sizes)
+
+  if (exchange$type != "signflip") {
+    same_size <- tapply(sizes, units$block, function(x) length(unique(x)) == 1)
+    if (!all(same_size)) {
+      cli::cli_abort(c(
+        "Permuting residuals between units requires units of equal size
+         within each {if (exchange$type == 'free') 'stratum' else 'block'}.",
+        "x" = "Units of {.field {unit}} have different numbers of rows.",
+        "i" = "Use {.fn exch_signflip}, which flips whole blocks and accepts
+               units of any size, or make units the same length."
+      ), call = call)
+    }
+  }
+  block_of_row <- match(units$block[row_unit], unique(units$block))
+  space <- count_permutations(units$unit, units$block, exchange$type)
+  if (exchange$type == "signflip") space$uninformative <- 0L
+
+  list(
+    space = space,
+    n_units = nrow(units),
+    draw = function(B) {
+      if (exchange$type == "signflip") {
+        n_blocks <- length(unique(units$block))
+        matrix(sample(c(-1L, 1L), n_blocks * B, replace = TRUE),
+               nrow = n_blocks)
+      } else {
+        generate_permutations(units$block, B)
+      }
+    },
+    make_data = function(draws, b) {
+      newdata <- data
+      if (exchange$type == "signflip") {
+        e <- resid_r * draws[block_of_row, b]
+      } else {
+        source_unit <- draws[row_unit, b]
+        e <- resid_r[ord[offsets[source_unit] + pos]]
+      }
+      newdata[[response]] <- fitted_r + e
+      newdata
+    }
+  )
+}

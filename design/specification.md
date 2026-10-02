@@ -496,9 +496,11 @@ Everything specified in sections 3–8.
 
 ## 11. Decisions
 
-1. Interactions in mixed designs: tested in v0.2 through Freedman–Lane. In
-   v0.1, `perm_test()` stops with an informative message when `term` is
-   involved in an interaction.
+1. Interactions: tested through Freedman–Lane (`method = "freedman-lane"`),
+   brought forward from v0.2 on 2026-10-02 because interactions such as
+   condition × time are where the package adds most over simple
+   participant-level analyses. Lower-order terms contained in an interaction
+   are refused.
 2. Default null in `perm_calibrate()`: `"mean"`.
 3. Default number of resamples: `B = 4999`.
 4. Wild bootstrap: implemented in the package (no dependency on

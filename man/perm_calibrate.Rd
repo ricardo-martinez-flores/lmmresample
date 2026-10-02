@@ -10,6 +10,7 @@ perm_calibrate(
   unit,
   exchange,
   coef = NULL,
+  method = c("auto", "relabel", "freedman-lane"),
   null = c("mean", "sharp"),
   ar1 = NULL,
   series = NULL,
@@ -25,8 +26,9 @@ perm_calibrate(
 \item{model}{A model fitted with \code{\link[stats:lm]{stats::lm()}}, \code{\link[stats:glm]{stats::glm()}},
 \code{\link[lme4:lmer]{lme4::lmer()}} or \code{\link[lme4:glmer]{lme4::glmer()}}.}
 
-\item{term}{Name of the variable to test. It must be a fixed-effect term
-of \code{model} and a column of the data, constant within each \code{unit}.}
+\item{term}{Fixed-effect term to test, as labelled in the model formula
+(e.g. \code{"condition"} or \code{"condition:time"}). For \code{method = "relabel"} it
+must be a column of the data, constant within each \code{unit}.}
 
 \item{unit}{Name of the column identifying the units whose values of
 \code{term} are permuted (e.g. \code{"trial"} or \code{"participant"}).}
@@ -34,9 +36,10 @@ of \code{model} and a column of the data, constant within each \code{unit}.}
 \item{exchange}{Exchangeability of units, created with \code{\link[=exch_within]{exch_within()}},
 \code{\link[=exch_signflip]{exch_signflip()}} or \code{\link[=exch_free]{exch_free()}}.}
 
-\item{coef}{Name of the coefficient used as the test statistic. Needed only
-when \code{term} corresponds to several coefficients (a factor with more than
-two levels).}
+\item{coef}{Optional name of the coefficient(s) of \code{term} to test. By
+default all coefficients of the term are tested jointly.}
+
+\item{method}{Resampling method, as in \code{\link[=perm_test]{perm_test()}}.}
 
 \item{null}{Null hypothesis under which data are simulated: \code{"mean"} or
 \code{"sharp"}. See Details.}

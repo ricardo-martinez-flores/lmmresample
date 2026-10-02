@@ -1,5 +1,16 @@
 # lmmresample 0.0.0.9000
 
+* `perm_test()` and `perm_calibrate()` gain `method = "freedman-lane"`:
+  residuals of the reduced model are permuted between whole units or
+  sign-flipped by block, which allows tests of interactions (e.g.
+  `condition:time`), of terms with several coefficients (joint Wald
+  chi-square) and of effects in the presence of nuisance terms. Random slopes
+  of the tested term are removed from the reduced model. `method = "auto"`
+  chooses relabelling for simple main effects and Freedman-Lane otherwise.
+
+* `sim_blocks()` gains `effect_onset` (condition effects that appear later in
+  the trial) and `ar1_trials` (correlation between consecutive trials).
+
 * New `perm_maxt()` and `perm_spec()` test the same variable in several models
   at once (e.g. one model per feature) and control the family-wise error rate
   with the Westfall-Young max-t procedure (single-step or step-down), using

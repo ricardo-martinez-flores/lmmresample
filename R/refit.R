@@ -60,8 +60,9 @@ model_data <- function(model, data = NULL, call = rlang::caller_env()) {
 
 # Build a function that refits the model to new data. All arguments of the
 # original call except `data` are evaluated once, here, so that refits do not
-# depend on the calling environment (needed for parallel workers).
-make_refitter <- function(model, call = rlang::caller_env()) {
+# depend on the calling environment (needed for parallel workers). A
+# different `formula` can be supplied (e.g. a reduced model).
+make_refitter <- function(model, formula = NULL, call = rlang::caller_env()) {
   cl <- model_call(model)
   if (!is.null(cl$subset)) {
     cli::cli_abort(c(
@@ -74,7 +75,7 @@ make_refitter <- function(model, call = rlang::caller_env()) {
   args <- as.list(cl)[-1]
   args$data <- NULL
   args <- lapply(args, function(a) eval(a, env))
-  args$formula <- stats::formula(model)
+  args$formula <- if (is.null(formula)) stats::formula(model) else formula
   args$data <- quote(.lmmr_data)
   refit_call <- as.call(c(list(fun), args))
   function(newdata) {
@@ -83,8 +84,9 @@ make_refitter <- function(model, call = rlang::caller_env()) {
 }
 
 # Refit and extract statistics, recording problems instead of failing.
-# Returns list(stat = named numeric, status = character(1)).
-safe_refit <- function(refit, newdata, coefs) {
+# Returns list(stat = named numeric, status = character(1)). With
+# `type = "chi2"` the statistic is a single Wald chi-square for all `coefs`.
+safe_refit <- function(refit, newdata, coefs, type = "t") {
   status <- "ok"
   fit <- withCallingHandlers(
     tryCatch(refit(newdata), error = function(e) NULL),
@@ -102,15 +104,30 @@ safe_refit <- function(refit, newdata, coefs) {
     }
   )
   if (is.null(fit)) {
-    return(list(stat = stats::setNames(rep(NA_real_, length(coefs)), coefs),
+    n_stat <- if (type == "chi2") 1 else length(coefs)
+    nm <- if (type == "chi2") "chi2" else coefs
+    return(list(stat = stats::setNames(rep(NA_real_, n_stat), nm),
                 status = "failed"))
   }
   if (status == "ok" && is_mixed(fit) && lme4::isSingular(fit)) {
     status <- "singular"
   }
-  stat <- coef_stats(fit, coefs)
+  stat <- if (type == "chi2") wald_chi2(fit, coefs) else coef_stats(fit, coefs)
   if (anyNA(stat) && status == "ok") status <- "failed"
   list(stat = stat, status = status)
+}
+
+# Wald chi-square statistic for a set of coefficients.
+wald_chi2 <- function(fit, coefs) {
+  est <- if (is_mixed(fit)) lme4::fixef(fit) else stats::coef(fit)
+  v <- as.matrix(stats::vcov(fit))
+  b <- est[coefs]
+  if (anyNA(b) || !all(coefs %in% colnames(v))) return(c(chi2 = NA_real_))
+  out <- tryCatch(
+    as.numeric(crossprod(b, solve(v[coefs, coefs, drop = FALSE], b))),
+    error = function(e) NA_real_
+  )
+  c(chi2 = out)
 }
 
 # Wald statistic (estimate / standard error) for the requested coefficients.
@@ -190,20 +207,21 @@ resolve_coef <- function(model, term, coef = NULL, call = rlang::caller_env()) {
 
 # Run the refits over a matrix of permuted unit indices, in parallel through
 # the future framework. `make_data(b)` returns the data for replicate b.
-run_refits <- function(refit, make_data, B, coefs) {
+run_refits <- function(refit, make_data, B, coefs, type = "t") {
   use_progress <- requireNamespace("progressr", quietly = TRUE)
   run <- function() {
     if (use_progress) p <- progressr::progressor(steps = B)
     future.apply::future_lapply(seq_len(B), function(b) {
-      res <- safe_refit(refit, make_data(b), coefs)
+      res <- safe_refit(refit, make_data(b), coefs, type)
       if (use_progress) p()
       res
     }, future.seed = FALSE)
   }
   results <- run()
-  stats <- matrix(vapply(results, function(r) r$stat, numeric(length(coefs))),
-                  ncol = length(coefs), byrow = TRUE,
-                  dimnames = list(NULL, coefs))
+  nm <- if (type == "chi2") "chi2" else coefs
+  stats <- matrix(vapply(results, function(r) r$stat, numeric(length(nm))),
+                  ncol = length(nm), byrow = TRUE,
+                  dimnames = list(NULL, nm))
   status <- vapply(results, function(r) r$status, character(1))
   list(stats = stats, status = status)
 }

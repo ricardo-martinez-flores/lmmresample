@@ -1,18 +1,38 @@
 #' Permutation test for a model term
 #'
-#' Tests a fixed-effect term by permuting its values across whole units
-#' (trials or participants) and refitting the full model to each permuted
-#' data set. Because complete units are exchanged, any dependence within a
-#' unit, such as the autocorrelation of samples within a trial, is preserved
-#' in the permutation distribution without having to be modelled.
+#' Tests a fixed-effect term by resampling whole units (trials or
+#' participants) and refitting the full model to each resampled data set.
+#' Because complete units are exchanged, any dependence within a unit, such
+#' as the autocorrelation of samples within a trial, is preserved in the
+#' permutation distribution without having to be modelled.
 #'
 #' @details
+#' Two resampling methods are available:
+#'
+#' * `"relabel"`: the values of `term` are reassigned among units, as
+#'   declared by `exchange`. It requires `term` to be a variable constant
+#'   within units and is used for main effects.
+#' * `"freedman-lane"`: the reduced model without `term` is fitted, and its
+#'   residuals are permuted between whole units (or sign-flipped by block with
+#'   [exch_signflip()]) and added back to its fitted values (Freedman & Lane,
+#'   1983; Winkler et al., 2014). It accounts for nuisance terms and allows
+#'   tests of interactions (e.g. `"condition:time"`) and of terms with several
+#'   coefficients. Random slopes of `term` are removed from the reduced model,
+#'   because they would absorb the tested effect. Available for Gaussian
+#'   responses. Permuting residuals between units requires units of equal
+#'   size within blocks; sign-flipping accepts units of any size.
+#'
+#' With `method = "auto"` (default), relabelling is used for a main effect that
+#' is a column of the data with a single coefficient, and Freedman-Lane
+#' otherwise.
+#'
 #' The statistic is the Wald statistic of the coefficient (estimate divided by
 #' its standard error): a *t* value for linear models and a *z* value for
-#' non-Gaussian generalized models. The permutation distribution is built by
-#' reassigning the values of `term` among units, as declared by `exchange`,
-#' and refitting the model with [stats::update()]-like semantics: every
-#' argument of the original call is kept and only the data change.
+#' non-Gaussian generalized models. When the term has several coefficients
+#' (a factor with more than two levels, or an interaction with a spline of
+#' time), the statistic is the Wald chi-square of all of them and the test is
+#' two-sided. Refits keep every argument of the original call; only the data
+#' change.
 #'
 #' The p-value follows Phipson and Smyth (2010):
 #' \deqn{p = (b + 1) / (B' + 1),}
@@ -27,21 +47,22 @@
 #' [future::plan()], e.g. `future::plan("multisession", workers = 4)`.
 #' Progress can be reported with [progressr::with_progress()].
 #'
-#' Terms involved in an interaction cannot be tested by permuting raw values
-#' and are refused; they require permutation of residuals (Freedman-Lane),
-#' planned for a future version.
+#' Terms contained in a higher-order interaction are refused: test the
+#' interaction first.
 #'
 #' @param model A model fitted with [stats::lm()], [stats::glm()],
 #'   [lme4::lmer()] or [lme4::glmer()].
-#' @param term Name of the variable to test. It must be a fixed-effect term
-#'   of `model` and a column of the data, constant within each `unit`.
+#' @param term Fixed-effect term to test, as labelled in the model formula
+#'   (e.g. `"condition"` or `"condition:time"`). For `method = "relabel"` it
+#'   must be a column of the data, constant within each `unit`.
 #' @param unit Name of the column identifying the units whose values of
 #'   `term` are permuted (e.g. `"trial"` or `"participant"`).
 #' @param exchange Exchangeability of units, created with [exch_within()],
 #'   [exch_signflip()] or [exch_free()].
-#' @param coef Name of the coefficient used as the test statistic. Needed only
-#'   when `term` corresponds to several coefficients (a factor with more than
-#'   two levels).
+#' @param coef Optional name of the coefficient(s) of `term` to test. By
+#'   default all coefficients of the term are tested jointly.
+#' @param method Resampling method: `"auto"`, `"relabel"` or
+#'   `"freedman-lane"`. See Details.
 #' @param alternative Direction of the alternative hypothesis.
 #' @param B Number of permutations. The default, 4999, is suitable for
 #'   reporting; use smaller values only for exploration.
@@ -61,6 +82,14 @@
 #'   \item{B, B_used}{Requested and successfully used permutations.}
 #'
 #' @references
+#' Freedman, D., & Lane, D. (1983). A nonstochastic interpretation of
+#' reported significance levels. *Journal of Business & Economic Statistics,
+#' 1*(4), 292-298. \doi{10.1080/07350015.1983.10509354}
+#'
+#' Winkler, A. M., Ridgway, G. R., Webster, M. A., Smith, S. M., & Nichols,
+#' T. E. (2014). Permutation inference for the general linear model.
+#' *NeuroImage, 92*, 381-397. \doi{10.1016/j.neuroimage.2014.01.060}
+#'
 #' Phipson, B., & Smyth, G. K. (2010). Permutation p-values should never be
 #' zero: Calculating exact p-values when permutations are randomly drawn.
 #' *Statistical Applications in Genetics and Molecular Biology, 9*(1),
@@ -87,6 +116,14 @@
 #'   m_ts <- lme4::lmer(y ~ condition + (1 | participant), data = ts)
 #'   perm_test(m_ts, term = "condition", unit = "trial",
 #'             exchange = exch_within("participant"), B = 99, seed = 1)
+#'
+#'   # When does the effect appear? Condition x time interaction
+#'   ts2 <- sim_blocks("within", n_participants = 10, n_trials = 10,
+#'                     n_time = 30, effect_condition = 0.5,
+#'                     effect_onset = 0.3, seed = 3)
+#'   m_int <- lme4::lmer(y ~ condition * time + (1 | participant), data = ts2)
+#'   perm_test(m_int, term = "condition:time", unit = "trial",
+#'             exchange = exch_signflip("participant"), B = 99, seed = 1)
 #' }
 #' }
 #' @export
@@ -95,6 +132,7 @@ perm_test <- function(model,
                       unit,
                       exchange,
                       coef = NULL,
+                      method = c("auto", "relabel", "freedman-lane"),
                       alternative = c("two.sided", "greater", "less"),
                       B = 4999,
                       seed = NULL,
@@ -102,37 +140,37 @@ perm_test <- function(model,
   call <- match.call()
   check_model(model)
   check_column_name(term, "term")
+  method <- match.arg(method)
   alternative <- match.arg(alternative)
   check_count(B, "B", min = 1)
-  if (!is.null(coef)) check_column_name(coef, "coef")
+  if (!is.null(coef) && (!is.character(coef) || anyNA(coef))) {
+    cli::cli_abort("{.arg coef} must be a character vector of coefficient
+                    names.")
+  }
 
   data <- model_data(model, data)
-  coef <- resolve_coef(model, term, coef)
-  ub <- build_units(data, term, unit, exchange)
-  units <- ub$units
-  row_unit <- ub$row_unit
+  test <- resolve_test(model, data, term, coef, method)
+  if (test$type == "chi2" && alternative != "two.sided") {
+    cli::cli_abort("One-sided alternatives are only available for terms with
+                    a single coefficient.")
+  }
+  engine <- build_engine(model, data, term, test, unit, exchange)
+  check_permutation_space(engine$space, B, exchange, unit)
 
-  values <- data[[term]][units$value_row]
-  enc <- encode_values(values, exchange)
-  n_perm <- count_permutations(values, units$block, exchange$type)
-  check_permutation_space(n_perm, B, exchange, unit)
-
-  observed <- coef_stats(model, coef)[[1]]
+  observed <- if (test$type == "chi2") {
+    wald_chi2(model, test$coefs)[[1]]
+  } else {
+    coef_stats(model, test$coefs)[[1]]
+  }
   if (is.na(observed)) {
-    cli::cli_abort("The observed statistic for {.val {coef}} is not
+    cli::cli_abort("The observed statistic for {.val {term}} is not
                     available (coefficient not estimable).")
   }
 
-  relabels <- with_seed(seed, generate_relabels(enc$codes, units$block,
-                                                 exchange$type, B))
-  distinct <- enc$distinct
+  draws <- with_seed(seed, engine$draw(B))
   refit <- make_refitter(model)
-  make_data <- function(b) {
-    newdata <- data
-    newdata[[term]] <- distinct[relabels[, b]][row_unit]
-    newdata
-  }
-  res <- run_refits(refit, make_data, B, coef)
+  res <- run_refits(refit, function(b) engine$make_data(draws, b), B,
+                    test$coefs, test$type)
 
   null <- res$stats[, 1]
   status <- res$status
@@ -146,23 +184,27 @@ perm_test <- function(model,
              simplifying the random-effects structure."
     ))
   }
+  p_alt <- if (test$type == "chi2") "greater" else alternative
 
   structure(
     list(
       statistic = observed,
       null = null,
       status = status,
-      p.value = perm_pvalue(observed, null[used], alternative),
+      p.value = perm_pvalue(observed, null[used], p_alt),
       alternative = alternative,
       term = term,
-      coef = coef,
-      stat_label = stat_label(model),
+      coef = test$coefs,
+      method = test$method,
+      stat_type = test$type,
+      stat_label = if (test$type == "chi2") "chi2" else stat_label(model),
+      df = length(test$coefs),
       unit = unit,
       exchange = exchange,
-      n_units = nrow(units),
-      n_blocks = n_perm$n_blocks,
-      n_uninformative = n_perm$uninformative,
-      log_n_permutations = n_perm$log_n,
+      n_units = engine$n_units,
+      n_blocks = engine$space$n_blocks,
+      n_uninformative = engine$space$uninformative,
+      log_n_permutations = engine$space$log_n,
       B = B,
       B_used = sum(used),
       seed = seed,
@@ -225,15 +267,23 @@ check_permutation_space <- function(n_perm, B, exchange, unit,
 #' @export
 print.lmmr_perm <- function(x, digits = 3, ...) {
   cat("\nPermutation test for `", x$term, "`", sep = "")
-  if (x$coef != x$term) cat(" (coefficient `", x$coef, "`)", sep = "")
+  if (length(x$coef) > 1) {
+    cat(" (", length(x$coef), " coefficients)", sep = "")
+  } else if (x$coef != x$term) {
+    cat(" (coefficient `", x$coef, "`)", sep = "")
+  }
   cat("\n\n")
+  cat("Method:    ", method_label(x$method), "\n", sep = "")
   cat("Exchange:  ", format(x$exchange, unit = x$unit), " (",
       x$n_units, " units", if (!is.null(x$exchange$block)) {
         paste0(" in ", x$n_blocks, " blocks")
       }, ")\n", sep = "")
-  cat("Statistic: ", x$stat_label, " = ",
-      formatC(x$statistic, digits = digits, format = "f"), "\n", sep = "")
-  cat("p-value:   ", format_p(x$p.value), " (", alt_label(x$alternative),
+  cat("Statistic: ", x$stat_label, if (x$stat_type == "chi2") {
+    paste0("(", x$df, ")")
+  }, " = ", formatC(x$statistic, digits = digits, format = "f"), "\n",
+  sep = "")
+  cat("p-value:   ", format_p(x$p.value), " (",
+      if (x$stat_type == "chi2") "joint test" else alt_label(x$alternative),
       ")\n", sep = "")
   cat("Resamples: ", x$B_used, " of ", x$B, " permutations used\n", sep = "")
   print_refit_notes(x$status, x$B, x$B_used)
@@ -279,9 +329,11 @@ tidy.lmmr_perm <- function(x, type = c("summary", "null"), ...) {
                       status = x$status))
   }
   data.frame(
-    term = x$term, coef = x$coef, statistic = x$statistic,
-    p.value = x$p.value, alternative = x$alternative, B = x$B,
-    B_used = x$B_used, method = "permutation"
+    term = x$term, coef = paste(x$coef, collapse = ", "),
+    statistic = x$statistic, df = x$df, p.value = x$p.value,
+    alternative = if (x$stat_type == "chi2") "joint" else x$alternative,
+    B = x$B, B_used = x$B_used,
+    method = paste0("permutation (", x$method, ")")
   )
 }
 
@@ -302,7 +354,7 @@ plot.lmmr_perm <- function(x, type = c("null", "trace"), ...) {
 
   if (type == "null") {
     obs <- data.frame(value = x$statistic, kind = "observed")
-    if (x$alternative == "two.sided") {
+    if (x$alternative == "two.sided" && x$stat_type != "chi2") {
       obs <- rbind(obs, data.frame(value = -x$statistic, kind = "mirror"))
     }
     return(
@@ -319,7 +371,7 @@ plot.lmmr_perm <- function(x, type = c("null", "trace"), ...) {
         ) +
         ggplot2::labs(
           x = stat_name, y = "Permutations",
-          title = paste0("Permutation distribution: ", x$coef),
+          title = paste0("Permutation distribution: ", x$term),
           subtitle = paste0(x$stat_label, " = ", round(x$statistic, 2), ", p ",
                             format_p(x$p.value, prefix = TRUE), ", ",
                             x$B_used, " permutations")
@@ -328,7 +380,8 @@ plot.lmmr_perm <- function(x, type = c("null", "trace"), ...) {
     )
   }
 
-  extreme <- switch(x$alternative,
+  alt <- if (x$stat_type == "chi2") "greater" else x$alternative
+  extreme <- switch(alt,
     two.sided = abs(null) >= abs(x$statistic),
     greater = null >= x$statistic,
     less = null <= x$statistic
@@ -346,7 +399,7 @@ plot.lmmr_perm <- function(x, type = c("null", "trace"), ...) {
                         linetype = "dashed") +
     ggplot2::labs(
       x = "Number of permutations", y = "Running p-value",
-      title = paste0("Stability of the p-value: ", x$coef),
+      title = paste0("Stability of the p-value: ", x$term),
       subtitle = "Band: 95% Monte Carlo interval around the final p-value"
     ) +
     theme_lmmr()
@@ -358,6 +411,11 @@ format_p <- function(p, prefix = FALSE) {
   if (is.na(p)) return(if (prefix) "= NA" else "NA")
   out <- if (p < 0.001) "< 0.001" else formatC(p, digits = 3, format = "f")
   if (prefix && p >= 0.001) paste("=", out) else out
+}
+
+method_label <- function(method) {
+  switch(method, relabel = "relabelling of units",
+         `freedman-lane` = "Freedman-Lane (residuals of the reduced model)")
 }
 
 alt_label <- function(alternative) {

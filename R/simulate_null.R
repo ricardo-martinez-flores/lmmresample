@@ -34,7 +34,9 @@ make_null_simulator <- function(model, data, coef, null, ar1 = NULL,
   # Random effects: b = Lambda u, with Lambda built from (modified) theta
   if (is_mixed(model)) {
     theta <- lme4::getME(model, "theta")
-    if (null == "sharp") theta <- zero_theta_rows(model, theta, coef)
+    if (null == "sharp") {
+      for (cf in coef) theta <- zero_theta_rows(model, theta, cf)
+    }
     Lt <- lme4::getME(model, "Lambdat")
     Lt@x <- theta[lme4::getME(model, "Lind")]
     Z <- lme4::getME(model, "Z")

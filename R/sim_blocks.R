@@ -10,18 +10,21 @@
 #'
 #' @section Generative model:
 #' For participant \eqn{i}, trial \eqn{j} and sample \eqn{t},
-#' \deqn{y_{ijt} = s(t) + \beta_c c_{ij} + \beta_g g_i + \beta_{cg} c_{ij} g_i
-#'   + b_{0i} + b_{1i} c_{ij} + u_{ij} + e_{ijt},}
+#' \deqn{y_{ijt} = s(t) + w(t) (\beta_c c_{ij} + \beta_{cg} c_{ij} g_i
+#'   + b_{1i} c_{ij}) + \beta_g g_i + b_{0i} + u_{ij} + e_{ijt},}
 #' where \eqn{s(t)} is a smooth response curve common to all trials,
 #' \eqn{c_{ij}} and \eqn{g_i} are 0/1 indicators for the second level of
 #' `condition` and `group`, \eqn{b_{0i} \sim N(0, \sigma_p^2)} and
 #' \eqn{b_{1i} \sim N(0, \sigma_s^2)} are participant random intercepts and
-#' condition slopes, \eqn{u_{ij} \sim N(0, \sigma_t^2)} is a trial random
-#' intercept, and \eqn{e_{ijt}} follows a stationary AR(1) process within each
-#' trial with coefficient `ar1` and marginal standard deviation
-#' `sd_residual`.
+#' condition slopes, \eqn{u_{ij}} is a trial random intercept with standard
+#' deviation \eqn{\sigma_t} (optionally following an AR(1) process across
+#' consecutive trials, `ar1_trials`), and \eqn{e_{ijt}} follows a stationary
+#' AR(1) process within each trial with coefficient `ar1` and marginal
+#' standard deviation `sd_residual`. The weight \eqn{w(t)} is 1 at all times
+#' by default; with `effect_onset > 0` it rises smoothly from 0 to 1 around
+#' the onset, so condition effects appear only later in the trial.
 #'
-#' Effects are constant over time, so in a model containing `condition`
+#' With the default constant weight, in a model containing `condition`
 #' (and/or `group`) the corresponding fixed-effect coefficient estimates
 #' `effect_condition` (and/or `effect_group`) directly.
 #'
@@ -63,6 +66,14 @@
 #'   gives balanced conditions; e.g. 0.2 mimics an oddball design with 20%
 #'   targets. The number of `"B"` trials is rounded to the nearest integer and
 #'   kept between 1 and `n_trials - 1`.
+#' @param effect_onset Time (in seconds from trial onset) at which condition
+#'   effects (`effect_condition`, `effect_interaction` and the random slopes)
+#'   appear. The default, 0, gives effects that are constant over the trial;
+#'   positive values give a time-varying effect, as in pupil responses that
+#'   diverge only some hundreds of milliseconds after the stimulus.
+#' @param ar1_trials Correlation between the random intercepts of consecutive
+#'   trials of the same participant, in \eqn{[0, 1)}, to simulate dependence
+#'   between trials (e.g. slow drifts or carry-over).
 #' @param residual_df Degrees of freedom of a Student t distribution for the
 #'   innovations of the within-trial residuals. `Inf` (the default) gives
 #'   normal residuals; small values (e.g. 4 or 5) give heavy-tailed
@@ -115,6 +126,8 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
                        sd_residual = 1,
                        ar1 = 0.9,
                        prop_condition = 0.5,
+                       effect_onset = 0,
+                       ar1_trials = 0,
                        residual_df = Inf,
                        seed = NULL) {
   design <- match.arg(design)
@@ -144,6 +157,11 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
   check_number(ar1, "ar1", min = 0)
   if (ar1 >= 1) {
     cli::cli_abort("{.arg ar1} must be smaller than 1, not {ar1}.")
+  }
+  check_number(effect_onset, "effect_onset", min = 0)
+  check_number(ar1_trials, "ar1_trials", min = 0)
+  if (ar1_trials >= 1) {
+    cli::cli_abort("{.arg ar1_trials} must be smaller than 1.")
   }
   check_number(prop_condition, "prop_condition", min = 0, max = 1,
                min_inclusive = FALSE)
@@ -195,7 +213,8 @@ sim_blocks <- function(design = c("within", "between", "mixed"),
     effect_condition = effect_condition, effect_group = effect_group,
     effect_interaction = effect_interaction, sd_participant = sd_participant,
     sd_slope = sd_slope, sd_trial = sd_trial, sd_residual = sd_residual,
-    ar1 = ar1, prop_condition = prop_condition, residual_df = residual_df,
+    ar1 = ar1, prop_condition = prop_condition, effect_onset = effect_onset,
+    ar1_trials = ar1_trials, residual_df = residual_df,
     seed = seed
   )
 
@@ -234,19 +253,21 @@ simulate_series <- function(p, has_condition, has_group) {
   } else {
     rep(0L, n_tr)
   }
-  u <- stats::rnorm(n_tr, 0, p$sd_trial)
+  u <- trial_intercepts(k, p$sd_trial, p$ar1_trials)
 
-  trial_mean <- p$effect_condition * cond01 +
-    p$effect_group * group01[trial_p] +
+  trial_mean <- p$effect_group * group01[trial_p] + b0[trial_p] + u
+  trial_effect <- p$effect_condition * cond01 +
     p$effect_interaction * cond01 * group01[trial_p] +
-    b0[trial_p] + b1[trial_p] * cond01 + u
+    b1[trial_p] * cond01
 
   # Within-trial series: common response curve + AR(1) residuals
   time <- (seq_len(n_t) - 1) / p$sampling_rate
   curve <- response_curve(n_t)
+  weight <- effect_weight(time, p$effect_onset)
   resid <- ar1_matrix(n_t, n_tr, p$ar1, p$sd_residual, p$residual_df)
   y <- as.vector(resid) + rep(curve, times = n_tr) +
-    rep(trial_mean, each = n_t)
+    rep(trial_mean, each = n_t) +
+    rep(trial_effect, each = n_t) * rep(weight, times = n_tr)
 
   row_trial <- rep(seq_len(n_tr), each = n_t)
   out <- data.frame(
@@ -267,6 +288,29 @@ simulate_series <- function(p, has_condition, has_group) {
   }
   out$trial <- factor(out$trial, levels = unique(out$trial))
   order_columns(out)
+}
+
+# Trial random intercepts, optionally AR(1) across consecutive trials of the
+# same participant (stationary, marginal sd `sd`).
+trial_intercepts <- function(k, sd, phi) {
+  z <- stats::rnorm(sum(k))
+  if (phi > 0) {
+    innov <- sqrt(1 - phi^2)
+    is_start <- seq_along(z) %in% cumsum(c(1, k[-length(k)]))
+    for (i in seq_along(z)[!is_start]) {
+      z[i] <- phi * z[i - 1] + innov * z[i]
+    }
+  }
+  sd * z
+}
+
+# Weight of condition effects over time: 1 everywhere, or a smooth logistic
+# rise centred at `onset` seconds.
+effect_weight <- function(time, onset) {
+  if (onset <= 0) return(rep(1, length(time)))
+  span <- max(time) - min(time)
+  scale <- if (span > 0) span / 20 else 1
+  stats::plogis((time - onset) / scale)
 }
 
 # Smooth, pupil-like response normalised to a peak of 1 (Erlang kernel).

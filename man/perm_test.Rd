@@ -10,6 +10,7 @@ perm_test(
   unit,
   exchange,
   coef = NULL,
+  method = c("auto", "relabel", "freedman-lane"),
   alternative = c("two.sided", "greater", "less"),
   B = 4999,
   seed = NULL,
@@ -20,8 +21,9 @@ perm_test(
 \item{model}{A model fitted with \code{\link[stats:lm]{stats::lm()}}, \code{\link[stats:glm]{stats::glm()}},
 \code{\link[lme4:lmer]{lme4::lmer()}} or \code{\link[lme4:glmer]{lme4::glmer()}}.}
 
-\item{term}{Name of the variable to test. It must be a fixed-effect term
-of \code{model} and a column of the data, constant within each \code{unit}.}
+\item{term}{Fixed-effect term to test, as labelled in the model formula
+(e.g. \code{"condition"} or \code{"condition:time"}). For \code{method = "relabel"} it
+must be a column of the data, constant within each \code{unit}.}
 
 \item{unit}{Name of the column identifying the units whose values of
 \code{term} are permuted (e.g. \code{"trial"} or \code{"participant"}).}
@@ -29,9 +31,11 @@ of \code{model} and a column of the data, constant within each \code{unit}.}
 \item{exchange}{Exchangeability of units, created with \code{\link[=exch_within]{exch_within()}},
 \code{\link[=exch_signflip]{exch_signflip()}} or \code{\link[=exch_free]{exch_free()}}.}
 
-\item{coef}{Name of the coefficient used as the test statistic. Needed only
-when \code{term} corresponds to several coefficients (a factor with more than
-two levels).}
+\item{coef}{Optional name of the coefficient(s) of \code{term} to test. By
+default all coefficients of the term are tested jointly.}
+
+\item{method}{Resampling method: \code{"auto"}, \code{"relabel"} or
+\code{"freedman-lane"}. See Details.}
 
 \item{alternative}{Direction of the alternative hypothesis.}
 
@@ -56,19 +60,40 @@ refits).}
 \item{B, B_used}{Requested and successfully used permutations.}
 }
 \description{
-Tests a fixed-effect term by permuting its values across whole units
-(trials or participants) and refitting the full model to each permuted
-data set. Because complete units are exchanged, any dependence within a
-unit, such as the autocorrelation of samples within a trial, is preserved
-in the permutation distribution without having to be modelled.
+Tests a fixed-effect term by resampling whole units (trials or
+participants) and refitting the full model to each resampled data set.
+Because complete units are exchanged, any dependence within a unit, such
+as the autocorrelation of samples within a trial, is preserved in the
+permutation distribution without having to be modelled.
 }
 \details{
+Two resampling methods are available:
+\itemize{
+\item \code{"relabel"}: the values of \code{term} are reassigned among units, as
+declared by \code{exchange}. It requires \code{term} to be a variable constant
+within units and is used for main effects.
+\item \code{"freedman-lane"}: the reduced model without \code{term} is fitted, and its
+residuals are permuted between whole units (or sign-flipped by block with
+\code{\link[=exch_signflip]{exch_signflip()}}) and added back to its fitted values (Freedman & Lane,
+1983; Winkler et al., 2014). It accounts for nuisance terms and allows
+tests of interactions (e.g. \code{"condition:time"}) and of terms with several
+coefficients. Random slopes of \code{term} are removed from the reduced model,
+because they would absorb the tested effect. Available for Gaussian
+responses. Permuting residuals between units requires units of equal
+size within blocks; sign-flipping accepts units of any size.
+}
+
+With \code{method = "auto"} (default), relabelling is used for a main effect that
+is a column of the data with a single coefficient, and Freedman-Lane
+otherwise.
+
 The statistic is the Wald statistic of the coefficient (estimate divided by
 its standard error): a \emph{t} value for linear models and a \emph{z} value for
-non-Gaussian generalized models. The permutation distribution is built by
-reassigning the values of \code{term} among units, as declared by \code{exchange},
-and refitting the model with \code{\link[stats:update]{stats::update()}}-like semantics: every
-argument of the original call is kept and only the data change.
+non-Gaussian generalized models. When the term has several coefficients
+(a factor with more than two levels, or an interaction with a spline of
+time), the statistic is the Wald chi-square of all of them and the test is
+two-sided. Refits keep every argument of the original call; only the data
+change.
 
 The p-value follows Phipson and Smyth (2010):
 \deqn{p = (b + 1) / (B' + 1),}
@@ -83,9 +108,8 @@ parallel through the \pkg{future} framework: choose a backend with
 \code{\link[future:plan]{future::plan()}}, e.g. \code{future::plan("multisession", workers = 4)}.
 Progress can be reported with \code{\link[progressr:with_progress]{progressr::with_progress()}}.
 
-Terms involved in an interaction cannot be tested by permuting raw values
-and are refused; they require permutation of residuals (Freedman-Lane),
-planned for a future version.
+Terms contained in a higher-order interaction are refused: test the
+interaction first.
 }
 \examples{
 d <- sim_blocks("within", level = "trial", n_participants = 12,
@@ -105,10 +129,26 @@ if (requireNamespace("lme4", quietly = TRUE)) {
   m_ts <- lme4::lmer(y ~ condition + (1 | participant), data = ts)
   perm_test(m_ts, term = "condition", unit = "trial",
             exchange = exch_within("participant"), B = 99, seed = 1)
+
+  # When does the effect appear? Condition x time interaction
+  ts2 <- sim_blocks("within", n_participants = 10, n_trials = 10,
+                    n_time = 30, effect_condition = 0.5,
+                    effect_onset = 0.3, seed = 3)
+  m_int <- lme4::lmer(y ~ condition * time + (1 | participant), data = ts2)
+  perm_test(m_int, term = "condition:time", unit = "trial",
+            exchange = exch_signflip("participant"), B = 99, seed = 1)
 }
 }
 }
 \references{
+Freedman, D., & Lane, D. (1983). A nonstochastic interpretation of
+reported significance levels. \emph{Journal of Business & Economic Statistics,
+1}(4), 292-298. \doi{10.1080/07350015.1983.10509354}
+
+Winkler, A. M., Ridgway, G. R., Webster, M. A., Smith, S. M., & Nichols,
+T. E. (2014). Permutation inference for the general linear model.
+\emph{NeuroImage, 92}, 381-397. \doi{10.1016/j.neuroimage.2014.01.060}
+
 Phipson, B., & Smyth, G. K. (2010). Permutation p-values should never be
 zero: Calculating exact p-values when permutations are randomly drawn.
 \emph{Statistical Applications in Genetics and Molecular Biology, 9}(1),

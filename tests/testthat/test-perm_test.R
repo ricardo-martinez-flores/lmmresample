@@ -114,8 +114,6 @@ test_that("invalid tests are refused with informative errors", {
   m_int <- lm(y ~ condition * trial_index, data = d)
   expect_error(perm_test(m_int, "condition", "trial", ex), "interaction")
 
-  m_three <- lm(y ~ three, data = d)
-  expect_error(perm_test(m_three, "three", "trial", ex), "2 coefficients")
 
   expect_error(perm_test(list(), "condition", "trial", ex), "must be a model")
 
@@ -177,8 +175,8 @@ test_that("print, summary and tidy methods work", {
 
   td <- tidy(res)
   expect_equal(nrow(td), 1)
-  expect_named(td, c("term", "coef", "statistic", "p.value", "alternative",
-                     "B", "B_used", "method"))
+  expect_named(td, c("term", "coef", "statistic", "df", "p.value",
+                     "alternative", "B", "B_used", "method"))
   expect_equal(nrow(tidy(res, type = "null")), 19)
 })
 

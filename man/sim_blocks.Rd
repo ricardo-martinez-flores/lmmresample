@@ -20,6 +20,8 @@ sim_blocks(
   sd_residual = 1,
   ar1 = 0.9,
   prop_condition = 0.5,
+  effect_onset = 0,
+  ar1_trials = 0,
   residual_df = Inf,
   seed = NULL
 )
@@ -78,6 +80,16 @@ gives balanced conditions; e.g. 0.2 mimics an oddball design with 20\%
 targets. The number of \code{"B"} trials is rounded to the nearest integer and
 kept between 1 and \code{n_trials - 1}.}
 
+\item{effect_onset}{Time (in seconds from trial onset) at which condition
+effects (\code{effect_condition}, \code{effect_interaction} and the random slopes)
+appear. The default, 0, gives effects that are constant over the trial;
+positive values give a time-varying effect, as in pupil responses that
+diverge only some hundreds of milliseconds after the stimulus.}
+
+\item{ar1_trials}{Correlation between the random intercepts of consecutive
+trials of the same participant, in \eqn{[0, 1)}, to simulate dependence
+between trials (e.g. slow drifts or carry-over).}
+
 \item{residual_df}{Degrees of freedom of a Student t distribution for the
 innovations of the within-trial residuals. \code{Inf} (the default) gives
 normal residuals; small values (e.g. 4 or 5) give heavy-tailed
@@ -117,18 +129,21 @@ data.
 \section{Generative model}{
 
 For participant \eqn{i}, trial \eqn{j} and sample \eqn{t},
-\deqn{y_{ijt} = s(t) + \beta_c c_{ij} + \beta_g g_i + \beta_{cg} c_{ij} g_i
-  + b_{0i} + b_{1i} c_{ij} + u_{ij} + e_{ijt},}
+\deqn{y_{ijt} = s(t) + w(t) (\beta_c c_{ij} + \beta_{cg} c_{ij} g_i
+  + b_{1i} c_{ij}) + \beta_g g_i + b_{0i} + u_{ij} + e_{ijt},}
 where \eqn{s(t)} is a smooth response curve common to all trials,
 \eqn{c_{ij}} and \eqn{g_i} are 0/1 indicators for the second level of
 \code{condition} and \code{group}, \eqn{b_{0i} \sim N(0, \sigma_p^2)} and
 \eqn{b_{1i} \sim N(0, \sigma_s^2)} are participant random intercepts and
-condition slopes, \eqn{u_{ij} \sim N(0, \sigma_t^2)} is a trial random
-intercept, and \eqn{e_{ijt}} follows a stationary AR(1) process within each
-trial with coefficient \code{ar1} and marginal standard deviation
-\code{sd_residual}.
+condition slopes, \eqn{u_{ij}} is a trial random intercept with standard
+deviation \eqn{\sigma_t} (optionally following an AR(1) process across
+consecutive trials, \code{ar1_trials}), and \eqn{e_{ijt}} follows a stationary
+AR(1) process within each trial with coefficient \code{ar1} and marginal
+standard deviation \code{sd_residual}. The weight \eqn{w(t)} is 1 at all times
+by default; with \code{effect_onset > 0} it rises smoothly from 0 to 1 around
+the onset, so condition effects appear only later in the trial.
 
-Effects are constant over time, so in a model containing \code{condition}
+With the default constant weight, in a model containing \code{condition}
 (and/or \code{group}) the corresponding fixed-effect coefficient estimates
 \code{effect_condition} (and/or \code{effect_group}) directly.
 }

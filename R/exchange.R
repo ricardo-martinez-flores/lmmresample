@@ -95,9 +95,9 @@ print.lmmr_exchange <- function(x, ...) {
 
 # Unit table --------------------------------------------------------------
 
-# Build one row per unit with the value of the permuted variable and its
-# block, after validating the design. Returns a list with the unit table and
-# a vector mapping each data row to its unit.
+# Build one row per unit with the value of the permuted variable (if `term`
+# is not NULL) and its block, after validating the design. Returns a list
+# with the unit table and a vector mapping each data row to its unit.
 build_units <- function(data, term, unit, exchange, call = rlang::caller_env()) {
   if (!inherits(exchange, "lmmr_exchange")) {
     cli::cli_abort(
@@ -126,7 +126,9 @@ build_units <- function(data, term, unit, exchange, call = rlang::caller_env()) 
   row_unit <- match(unit_id, unique(unit_id))
   first <- !duplicated(row_unit)
 
-  n_values <- tapply(data[[term]], row_unit, function(x) length(unique(x)))
+  n_values <- if (is.null(term)) 1 else {
+    tapply(data[[term]], row_unit, function(x) length(unique(x)))
+  }
   if (any(n_values > 1)) {
     bad <- sum(n_values > 1)
     cli::cli_abort(c(

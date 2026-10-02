@@ -200,3 +200,31 @@ test_that("participants can have different numbers of trials", {
   expect_error(sim_blocks("within", n_participants = 2, n_trials = c(10, 7)),
                "must be even")
 })
+
+test_that("condition effects can start later in the trial", {
+  d <- sim_blocks("within", n_participants = 200, n_trials = 10, n_time = 50,
+                  sampling_rate = 25, effect_condition = 1, effect_onset = 1,
+                  sd_participant = 0, sd_trial = 0, sd_residual = 0.2,
+                  ar1 = 0, seed = 1)
+  diff_at <- function(t) {
+    x <- d[abs(d$time - t) < 1e-9, ]
+    mean(x$y[x$condition == "B"]) - mean(x$y[x$condition == "A"])
+  }
+  expect_lt(abs(diff_at(0)), 0.05)
+  expect_equal(diff_at(1), 0.5, tolerance = 0.1)
+  expect_equal(diff_at(1.96), 1, tolerance = 0.05)
+  expect_error(sim_blocks(effect_onset = -1), "at least 0")
+})
+
+test_that("trial intercepts can be correlated across consecutive trials", {
+  d <- sim_blocks("within", "trial", n_participants = 20, n_trials = 400,
+                  n_time = 5, sd_participant = 0, sd_slope = 0, sd_trial = 1,
+                  sd_residual = 0.01, ar1 = 0, ar1_trials = 0.6, seed = 2)
+  d <- d[order(d$participant, d$trial_index), ]
+  lag1 <- vapply(split(d$y, d$participant), function(x) {
+    stats::cor(x[-1], x[-length(x)])
+  }, numeric(1))
+  expect_equal(mean(lag1), 0.6, tolerance = 0.03)
+  expect_equal(stats::sd(d$y), 1, tolerance = 0.1)
+  expect_error(sim_blocks(ar1_trials = 1), "smaller than 1")
+})
