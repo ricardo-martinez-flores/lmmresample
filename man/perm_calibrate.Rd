@@ -100,6 +100,15 @@ trial), ordered by \code{time}, keeping the residual standard deviation of the
 model. This reproduces the dependence that makes standard inference
 unreliable for such data.
 
+The check is only as realistic as the fitted model: anything the model
+leaves in the residuals is simulated as random noise. In particular, a
+common time course that the model does not capture (e.g. the average
+response curve, fitted only as a linear trend) is treated as noise that
+varies from trial to trial, which can make the simulated data behave
+quite differently from the real data. Fit the time course flexibly
+(e.g. with splines or time as a factor) before calibrating; residual
+time courses can be inspected with \code{\link[=diag_timecourse]{diag_timecourse()}}.
+
 Each simulation runs a complete permutation test, so the total number of
 model fits is \code{n_sim * (B + 1)}. Simulations run in parallel through the
 \pkg{future} framework (see \code{\link[=perm_test]{perm_test()}}). The defaults give a quick

@@ -9,6 +9,10 @@
   `correct = FALSE` restores the previous behaviour. `perm_calibrate()`
   therefore simulates residuals with realistic dependence.
 
+* The documentation of `perm_calibrate()` explains that systematic patterns
+  left in the residuals (such as an unmodelled average time course) are
+  simulated as noise, and recommends fitting the time course flexibly first.
+
 * Refits of mixed models start from the variance parameters of the original
   fit and skip lme4's derivative-based convergence check, roughly halving
   the time per refit on large data; `options(lmmresample.fast = FALSE)`
