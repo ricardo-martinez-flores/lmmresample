@@ -20,6 +20,21 @@ check_model <- function(model, call = rlang::caller_env()) {
              data."
     ), call = call)
   }
+  dropped <- if (inherits(model, "lmerMod")) {
+    names(attr(lme4::getME(model, "X"), "col.dropped"))
+  } else {
+    names(stats::coef(model))[is.na(stats::coef(model))]
+  }
+  if (length(dropped) > 0) {
+    cli::cli_abort(c(
+      "The fixed-effects design of {.arg model} is rank deficient.",
+      "x" = "{cli::qty(length(dropped))}Coefficient{?s} {.val {dropped}}
+             could not be estimated and {?was/were} dropped.",
+      "i" = "Remove redundant terms (e.g. an interaction with a variable whose
+             main effect is already captured by another term) so that the
+             tested coefficients are well defined."
+    ), call = call)
+  }
   invisible(model)
 }
 

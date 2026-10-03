@@ -94,3 +94,18 @@ test_that("calibration is reproducible with a non-default RNG kind", {
                        n_sim = 4, B = 9, seed = 2)
   expect_equal(c1$p_perm, c2$p_perm)
 })
+
+test_that("rank-deficient fixed effects are refused", {
+  d <- sim_blocks("within", n_participants = 6, n_trials = 8, n_time = 10,
+                  seed = 1)
+  d$time_f <- factor(d$time)
+  m <- suppressMessages(lme4::lmer(
+    y ~ time_f + condition + condition:splines::ns(time, 3) +
+      (1 | participant), data = d))
+  expect_error(perm_test(m, "condition", "trial",
+                         exch_signflip("participant"), B = 9),
+               "rank deficient")
+  d$x2 <- as.numeric(d$condition == "B")
+  m_lm <- lm(y ~ condition + x2 + participant, data = d)
+  expect_error(boot_ci(m_lm, "participant", B = 9), "rank deficient")
+})

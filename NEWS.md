@@ -9,6 +9,10 @@
   `correct = FALSE` restores the previous behaviour. `perm_calibrate()`
   therefore simulates residuals with realistic dependence.
 
+* Models whose fixed-effects design is rank deficient (coefficients dropped
+  by `lm()` or `lmer()`) are now refused with an informative error, instead
+  of silently testing a different set of coefficients.
+
 * The documentation of `perm_calibrate()` explains that systematic patterns
   left in the residuals (such as an unmodelled average time course) are
   simulated as noise, and recommends fitting the time course flexibly first.
