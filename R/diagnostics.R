@@ -9,22 +9,38 @@
 #'
 #' @details
 #' Each series is centred on its own mean before computing its
-#' autocorrelation, which biases estimates slightly towards zero for short
-#' series (by roughly \eqn{(1 + 4\phi) / n} at lag 1 for a series of length
-#' \eqn{n}). Series shorter than `lag_max + 2` samples are skipped.
+#' autocorrelation. This removes series-level offsets (e.g. trial random
+#' intercepts) but biases the estimates towards zero, strongly so for short
+#' and highly autocorrelated series (for example, a true lag-1 value of 0.92
+#' is estimated as about 0.64 with 20 samples per series). With
+#' `correct = TRUE` (the default) `phi` is a bias-corrected AR(1)
+#' coefficient: the expected mean autocorrelations of centred AR(1) series
+#' with the observed lengths are computed by simulation over a grid of
+#' coefficients, and the coefficient whose expected autocorrelations at lags 1
+#' to `lag_max` best match the observed ones (least squares) is returned.
+#' Matching several lags, rather than lag 1 only, keeps the estimate sensible
+#' when the noise is smooth but not exactly AR(1), as is typical of
+#' physiological signals. The simulation uses a fixed internal seed and does
+#' not change the random number stream of the session. The autocorrelations
+#' in `acf` are reported uncorrected. Series shorter than `lag_max + 2`
+#' samples are skipped.
 #'
 #' @param model A linear model fitted with [stats::lm()] or [lme4::lmer()].
 #' @param series Name of the column identifying each series (e.g. `"trial"`).
 #' @param time Name of the column giving the order of samples within series.
 #' @param lag_max Maximum lag. Defaults to 20 or the length of the shortest
 #'   series minus 2, whichever is smaller.
+#' @param correct Logical. Return a bias-corrected AR(1) coefficient that
+#'   accounts for centring short series (see Details)?
 #' @param data The data used to fit `model`, if it cannot be recovered from
 #'   the model call.
 #'
 #' @return An object of class `lmmr_acf` with methods for [print()],
-#'   [tidy()][generics::tidy] and [plot()]. Its element `phi` is the mean
-#'   lag-1 autocorrelation, and `acf` a data frame with the mean, 10th and
-#'   90th percentiles of the autocorrelation across series at each lag.
+#'   [tidy()][generics::tidy] and [plot()]. Its element `phi` is the AR(1)
+#'   coefficient (bias-corrected if `correct = TRUE`), `phi_raw` the
+#'   uncorrected mean lag-1 autocorrelation across series, and `acf` a data
+#'   frame with the mean, 10th and 90th percentiles of the autocorrelation
+#'   across series at each lag.
 #'
 #' @seealso [perm_calibrate()], [diag_timecourse()]
 #'
@@ -35,7 +51,8 @@
 #' ac <- diag_acf(m, series = "trial", time = "time")
 #' ac
 #' @export
-diag_acf <- function(model, series, time, lag_max = NULL, data = NULL) {
+diag_acf <- function(model, series, time, lag_max = NULL, correct = TRUE,
+                     data = NULL) {
   check_model(model)
   check_column_name(series, "series")
   check_column_name(time, "time")
@@ -68,8 +85,14 @@ diag_acf <- function(model, series, time, lag_max = NULL, data = NULL) {
     lower = apply(acfs, 1, stats::quantile, 0.1, na.rm = TRUE),
     upper = apply(acfs, 1, stats::quantile, 0.9, na.rm = TRUE)
   )
+  if (!is.logical(correct) || length(correct) != 1 || is.na(correct)) {
+    cli::cli_abort("{.arg correct} must be TRUE or FALSE.")
+  }
+  phi_raw <- tab$acf[1]
+  phi <- if (correct) correct_ar1(tab$acf, lengths(usable)) else phi_raw
   structure(
-    list(acf = tab, phi = tab$acf[1], series = series, time = time,
+    list(acf = tab, phi = phi, phi_raw = phi_raw, corrected = correct,
+         series = series, time = time,
          n_series = length(usable), n_skipped = length(groups) - length(usable),
          median_length = stats::median(lengths)),
     class = "lmmr_acf"
@@ -84,8 +107,12 @@ print.lmmr_acf <- function(x, ...) {
       x$median_length, ")", if (x$n_skipped > 0) {
         paste0("; ", x$n_skipped, " too short and skipped")
       }, "\n", sep = "")
-  cat("Lag-1 correlation: ", formatC(x$phi, digits = 3, format = "f"),
-      "\n", sep = "")
+  cat(if (isTRUE(x$corrected)) "AR(1) coefficient: " else "Lag-1 correlation: ",
+      formatC(x$phi, digits = 3, format = "f"),
+      if (isTRUE(x$corrected)) {
+        paste0(" (bias-corrected; uncorrected lag-1 mean ",
+               formatC(x$phi_raw, digits = 3, format = "f"), ")")
+      }, "\n", sep = "")
   show <- x$acf[x$acf$lag %in% c(1, 2, 5, 10, 20), ]
   cat("Mean autocorrelation at lags ",
       paste(show$lag, collapse = ", "), ": ",
@@ -282,4 +309,65 @@ plot.lmmr_timecourse <- function(x, ...) {
     ) +
     theme_lmmr() +
     ggplot2::theme(legend.position = "bottom")
+}
+
+# Bias-corrected AR(1) coefficient from the mean autocorrelation function of
+# centred series. Centring each series biases its autocorrelations towards
+# zero, strongly for short series. The expected mean autocorrelations (as
+# computed by stats::acf after centring) of stationary AR(1) series with the
+# observed lengths are obtained by simulation over a grid of coefficients,
+# with the same random draws for every coefficient, and the coefficient whose
+# expected autocorrelations at lags 1 to L best match the observed ones
+# (least squares) is returned. Matching several lags, not only lag 1, keeps
+# the estimate sensible when the noise is smooth but not exactly AR(1).
+correct_ar1 <- function(acf_obs, lengths, n_rep = 4000, seed = 20261003) {
+  if (anyNA(acf_obs[1])) return(NA_real_)
+  acf_obs <- acf_obs[!is.na(acf_obs)]
+  L <- length(acf_obs)
+  grid <- c(seq(-0.95, 0.99, by = 0.01), seq(0.991, 0.999, by = 0.001))
+  lengths <- pmin(lengths, 500)
+  expected <- with_seed(seed, {
+    len <- if (length(lengths) > n_rep) {
+      sample(lengths, n_rep)
+    } else {
+      rep_len(lengths, n_rep)
+    }
+    by_len <- split(seq_along(len), len)
+    z <- lapply(names(by_len), function(n) {
+      matrix(stats::rnorm(as.integer(n) * length(by_len[[n]])),
+             nrow = as.integer(n))
+    })
+    vapply(grid, function(phi) {
+      innov <- sqrt(1 - phi^2)
+      acfs <- lapply(z, function(zk) {
+        x <- zk
+        if (nrow(x) > 1) {
+          for (t in 2:nrow(x)) x[t, ] <- phi * x[t - 1, ] + innov * zk[t, ]
+        }
+        x <- sweep(x, 2, colMeans(x))
+        n <- nrow(x)
+        den <- colSums(x^2)
+        vapply(seq_len(L), function(k) {
+          if (k >= n) return(rep(NA_real_, ncol(x)))
+          colSums(x[-seq_len(k), , drop = FALSE] *
+                    x[-((n - k + 1):n), , drop = FALSE]) / den
+        }, numeric(ncol(x)))
+      })
+      acfs <- do.call(rbind, lapply(acfs, matrix, ncol = L))
+      colMeans(acfs, na.rm = TRUE)
+    }, numeric(L))
+  }, kind = c("Mersenne-Twister", "Inversion", "Rejection"))
+  expected <- matrix(expected, nrow = L)
+  loss <- colSums((expected - acf_obs)^2)
+  j <- which.min(loss)
+  if (j == 1 || j == length(grid)) return(grid[j])
+  # refine with a parabola through the minimum and its neighbours
+  x <- grid[(j - 1):(j + 1)]
+  y <- loss[(j - 1):(j + 1)]
+  den <- (x[1] - x[2]) * (x[1] - x[3]) * (x[2] - x[3])
+  a <- (x[3] * (y[2] - y[1]) + x[2] * (y[1] - y[3]) + x[1] * (y[3] - y[2])) / den
+  b <- (x[3]^2 * (y[1] - y[2]) + x[2]^2 * (y[3] - y[1]) +
+          x[1]^2 * (y[2] - y[3])) / den
+  if (a <= 0) return(grid[j])
+  min(max(-b / (2 * a), x[1]), x[3])
 }

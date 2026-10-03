@@ -1,5 +1,14 @@
 # lmmresample 0.0.0.9000
 
+* `diag_acf()` now returns a bias-corrected AR(1) coefficient (`phi`).
+  Centring each short series biased the mean autocorrelation strongly towards
+  zero (e.g. 0.64 for a true 0.92 with 20 samples per series); the
+  coefficient is now chosen so that the expected autocorrelations of centred
+  AR(1) series of the observed lengths match the observed ones over all
+  lags. The uncorrected lag-1 mean is kept as `phi_raw`, and
+  `correct = FALSE` restores the previous behaviour. `perm_calibrate()`
+  therefore simulates residuals with realistic dependence.
+
 * Refits of mixed models start from the variance parameters of the original
   fit and skip lme4's derivative-based convergence check, roughly halving
   the time per refit on large data; `options(lmmresample.fast = FALSE)`

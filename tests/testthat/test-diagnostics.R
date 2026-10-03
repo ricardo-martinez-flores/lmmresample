@@ -10,6 +10,23 @@ test_that("diag_acf recovers the residual autocorrelation", {
   expect_output(print(ac), "strongly autocorrelated")
 })
 
+test_that("diag_acf corrects the bias of short series", {
+  d <- sim_blocks("within", n_participants = 10, n_trials = 40, n_time = 20,
+                  ar1 = 0.9, sd_trial = 0, seed = 2)
+  m <- lm(y ~ condition + participant + factor(time), data = d)
+  ac <- diag_acf(m, series = "trial", time = "time")
+  expect_lt(ac$phi_raw, 0.75)
+  expect_equal(ac$phi, 0.9, tolerance = 0.03)
+  raw <- diag_acf(m, series = "trial", time = "time", correct = FALSE)
+  expect_equal(raw$phi, ac$phi_raw)
+  expect_output(print(ac), "bias-corrected")
+  expect_error(diag_acf(m, "trial", "time", correct = NA), "TRUE or FALSE")
+  # does not change the random number stream of the session
+  set.seed(5); a <- stats::runif(1)
+  set.seed(5); invisible(diag_acf(m, "trial", "time")); b <- stats::runif(1)
+  expect_identical(a, b)
+})
+
 test_that("diag_acf output can be passed to perm_calibrate", {
   d <- sim_blocks("within", n_participants = 6, n_trials = 6, n_time = 20,
                   seed = 2)

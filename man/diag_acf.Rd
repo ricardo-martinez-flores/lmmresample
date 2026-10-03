@@ -4,7 +4,7 @@
 \alias{diag_acf}
 \title{Autocorrelation of residuals within series}
 \usage{
-diag_acf(model, series, time, lag_max = NULL, data = NULL)
+diag_acf(model, series, time, lag_max = NULL, correct = TRUE, data = NULL)
 }
 \arguments{
 \item{model}{A linear model fitted with \code{\link[stats:lm]{stats::lm()}} or \code{\link[lme4:lmer]{lme4::lmer()}}.}
@@ -16,14 +16,19 @@ diag_acf(model, series, time, lag_max = NULL, data = NULL)
 \item{lag_max}{Maximum lag. Defaults to 20 or the length of the shortest
 series minus 2, whichever is smaller.}
 
+\item{correct}{Logical. Return a bias-corrected AR(1) coefficient that
+accounts for centring short series (see Details)?}
+
 \item{data}{The data used to fit \code{model}, if it cannot be recovered from
 the model call.}
 }
 \value{
 An object of class \code{lmmr_acf} with methods for \code{\link[=print]{print()}},
-\link[generics:tidy]{tidy()} and \code{\link[=plot]{plot()}}. Its element \code{phi} is the mean
-lag-1 autocorrelation, and \code{acf} a data frame with the mean, 10th and
-90th percentiles of the autocorrelation across series at each lag.
+\link[generics:tidy]{tidy()} and \code{\link[=plot]{plot()}}. Its element \code{phi} is the AR(1)
+coefficient (bias-corrected if \code{correct = TRUE}), \code{phi_raw} the
+uncorrected mean lag-1 autocorrelation across series, and \code{acf} a data
+frame with the mean, 10th and 90th percentiles of the autocorrelation
+across series at each lag.
 }
 \description{
 Estimates the autocorrelation of the model residuals within each series
@@ -35,9 +40,21 @@ the same dependence.
 }
 \details{
 Each series is centred on its own mean before computing its
-autocorrelation, which biases estimates slightly towards zero for short
-series (by roughly \eqn{(1 + 4\phi) / n} at lag 1 for a series of length
-\eqn{n}). Series shorter than \code{lag_max + 2} samples are skipped.
+autocorrelation. This removes series-level offsets (e.g. trial random
+intercepts) but biases the estimates towards zero, strongly so for short
+and highly autocorrelated series (for example, a true lag-1 value of 0.92
+is estimated as about 0.64 with 20 samples per series). With
+\code{correct = TRUE} (the default) \code{phi} is a bias-corrected AR(1)
+coefficient: the expected mean autocorrelations of centred AR(1) series
+with the observed lengths are computed by simulation over a grid of
+coefficients, and the coefficient whose expected autocorrelations at lags 1
+to \code{lag_max} best match the observed ones (least squares) is returned.
+Matching several lags, rather than lag 1 only, keeps the estimate sensible
+when the noise is smooth but not exactly AR(1), as is typical of
+physiological signals. The simulation uses a fixed internal seed and does
+not change the random number stream of the session. The autocorrelations
+in \code{acf} are reported uncorrected. Series shorter than \code{lag_max + 2}
+samples are skipped.
 }
 \examples{
 d <- sim_blocks("within", n_participants = 6, n_trials = 10, n_time = 40,
