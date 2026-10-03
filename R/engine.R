@@ -29,13 +29,18 @@ resolve_test <- function(model, data, term, coef, method,
   if (method == "relabel") {
     coefs <- resolve_coef(model, term, coef, call = call)
   } else {
-    if (info$in_interaction) {
+    if (info$in_interaction && !centred_vars(model, info$others)) {
       cli::cli_abort(c(
         "{.val {term}} is contained in a higher-order term
          ({.val {info$higher}}).",
         "i" = "Test the highest-order interaction first; the meaning of a
                lower-order term depends on how the variables are coded when
-               the interaction is in the model."
+               the interaction is in the model.",
+        "i" = "A lower-order term can be tested when every variable it
+               interacts with is numeric and centred (mean zero), e.g.
+               orthogonal polynomials from {.fn poly} in growth curve
+               analysis; it is then the effect at the mean of those
+               variables."
       ), call = call)
     }
     coefs <- if (is.null(coef)) info$coefs else {
@@ -50,6 +55,21 @@ resolve_test <- function(model, data, term, coef, method,
   }
   list(method = method, coefs = coefs,
        type = if (length(coefs) > 1) "chi2" else "t")
+}
+
+# TRUE if all variables are numeric and centred (mean zero) in the model
+# frame, so that a lower-order term is the effect at their mean (e.g.
+# orthogonal polynomial time in growth curve analysis).
+centred_vars <- function(model, vars) {
+  if (length(vars) == 0) return(TRUE)
+  mf <- stats::model.frame(model)
+  all(vapply(vars, function(v) {
+    x <- mf[[v]]
+    if (is.null(x) || !is.numeric(x)) return(FALSE)
+    x <- as.matrix(x)
+    scale <- pmax(apply(x, 2, stats::sd), 1e-12)
+    all(abs(colMeans(x)) <= 1e-6 * scale)
+  }, logical(1)))
 }
 
 # Coefficients of a fixed-effect term and its position in the hierarchy.
@@ -75,7 +95,8 @@ term_info <- function(model, term, call = rlang::caller_env()) {
   est <- if (is_mixed(model)) lme4::fixef(model) else stats::coef(model)
   coefs <- intersect(coefs, names(est)[!is.na(est)])
 
-  list(coefs = coefs, higher = unlist(higher),
+  others <- setdiff(unique(unlist(lapply(higher, vars_of))), my_vars)
+  list(coefs = coefs, higher = unlist(higher), others = others,
        in_interaction = length(higher) > 0,
        is_column = length(my_vars) == 1 && my_vars == term)
 }

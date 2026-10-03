@@ -204,3 +204,22 @@ test_that("random-effects terms left empty are dropped", {
   expect_false(grepl("(0 |", f, fixed = TRUE))
   expect_match(f, "(1 | participant)", fixed = TRUE)
 })
+
+test_that("lower-order terms are testable when interacting variables are centred", {
+  d <- sim_blocks("within", n_participants = 8, n_trials = 12, n_time = 10,
+                  effect_condition = 0.5, seed = 4)
+  P <- stats::poly(d$time, 2)
+  d$ot1 <- P[, 1]
+  d$ot2 <- P[, 2]
+  m <- suppressMessages(lme4::lmer(y ~ (ot1 + ot2) * condition +
+                                     (1 | participant), data = d))
+  pt <- perm_test(m, "condition", "trial", exch_signflip("participant"),
+                  B = 19, seed = 1)
+  expect_identical(pt$method, "freedman-lane")
+  expect_identical(pt$coef, "conditionB")
+  m2 <- suppressMessages(lme4::lmer(y ~ condition * time + (1 | participant),
+                                    data = d))
+  expect_error(perm_test(m2, "condition", "trial",
+                         exch_signflip("participant"), B = 9),
+               "centred")
+})

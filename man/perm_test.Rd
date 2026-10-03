@@ -118,8 +118,13 @@ parallel through the \pkg{future} framework: choose a backend with
 \code{\link[future:plan]{future::plan()}}, e.g. \code{future::plan("multisession", workers = 4)}.
 Progress can be reported with \code{\link[progressr:with_progress]{progressr::with_progress()}}.
 
-Terms contained in a higher-order interaction are refused: test the
-interaction first.
+Terms contained in a higher-order interaction are refused (test the
+interaction first), unless every variable they interact with is numeric
+and centred. This is the case in growth curve analysis with orthogonal
+polynomials of time (e.g. \code{poly(time, 3)}): the condition term is then the
+average difference over the analysed window and is tested with
+Freedman-Lane, while the condition-by-polynomial terms test differences in
+the shape of the curve.
 }
 \examples{
 d <- sim_blocks("within", level = "trial", n_participants = 12,

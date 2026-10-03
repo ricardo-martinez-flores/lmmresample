@@ -52,8 +52,13 @@
 #' [future::plan()], e.g. `future::plan("multisession", workers = 4)`.
 #' Progress can be reported with [progressr::with_progress()].
 #'
-#' Terms contained in a higher-order interaction are refused: test the
-#' interaction first.
+#' Terms contained in a higher-order interaction are refused (test the
+#' interaction first), unless every variable they interact with is numeric
+#' and centred. This is the case in growth curve analysis with orthogonal
+#' polynomials of time (e.g. `poly(time, 3)`): the condition term is then the
+#' average difference over the analysed window and is tested with
+#' Freedman-Lane, while the condition-by-polynomial terms test differences in
+#' the shape of the curve.
 #'
 #' @param model A linear model fitted with [stats::lm()] or [lme4::lmer()].
 #' @param term Fixed-effect term to test, as labelled in the model formula

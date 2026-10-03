@@ -9,6 +9,11 @@
   `correct = FALSE` restores the previous behaviour. `perm_calibrate()`
   therefore simulates residuals with realistic dependence.
 
+* A lower-order term can now be tested in the presence of interactions when
+  every variable it interacts with is numeric and centred, as in growth
+  curve analysis with orthogonal polynomials (`poly(time, 3)`); it is tested
+  with Freedman-Lane and represents the average difference over the window.
+
 * Models whose fixed-effects design is rank deficient (coefficients dropped
   by `lm()` or `lmer()`) are now refused with an informative error, instead
   of silently testing a different set of coefficients.
