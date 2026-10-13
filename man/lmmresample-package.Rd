@@ -16,8 +16,8 @@ The package is under active development. Planned for version 0.1.0:
 participants, labels between participants, or custom strata).
 \item Simulation-based calibration of the permutation null.
 \item Family-wise error control across several model terms (max-t).
-\item Cluster bootstrap confidence intervals (percentile and BCa), with wild
-bootstrap as an alternative resampling scheme.
+\item Cluster bootstrap confidence intervals (expanded percentile, percentile,
+BCa and basic), with wild bootstrap as an alternative resampling scheme.
 \item Leave-one-subject-out diagnostics and a coefficient agreement check.
 }
 }

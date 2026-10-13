@@ -134,3 +134,24 @@ test_that("BCa without the jackknife gives an informative error", {
   expect_null(bt$jackknife)
   expect_error(confint(bt, type = "bca"), "ci = \"bca\"")
 })
+
+test_that("expanded percentile is the default and widens with few clusters", {
+  d <- sim_blocks("within", "trial", n_participants = 8, n_trials = 10,
+                  effect_condition = 0.5, sd_slope = 0.3, seed = 2)
+  m <- suppressMessages(
+    lme4::lmer(y ~ condition + (1 + condition | participant), data = d)
+  )
+  bt <- suppressWarnings(boot_ci(m, "participant", terms = "conditionB",
+                                 B = 199, seed = 1))
+  expect_identical(bt$ci, "expanded")
+  pe <- confint(bt, type = "percentile")
+  ex <- confint(bt)
+  expect_lt(ex[1, 1], pe[1, 1])
+  expect_gt(ex[1, 2], pe[1, 2])
+  b <- bt$boot[, "conditionB"]
+  G <- 8
+  z <- sqrt(G / (G - 1)) * stats::qt(0.975, G - 1)
+  q <- stats::quantile(b[!is.na(b)], stats::pnorm(c(-z, z)), names = FALSE,
+                       type = 6)
+  expect_equal(unname(ex[1, ]), q)
+})

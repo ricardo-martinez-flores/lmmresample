@@ -9,8 +9,8 @@
 #'   participants, labels between participants, or custom strata).
 #' * Simulation-based calibration of the permutation null.
 #' * Family-wise error control across several model terms (max-t).
-#' * Cluster bootstrap confidence intervals (percentile and BCa), with wild
-#'   bootstrap as an alternative resampling scheme.
+#' * Cluster bootstrap confidence intervals (expanded percentile, percentile,
+#'   BCa and basic), with wild bootstrap as an alternative resampling scheme.
 #' * Leave-one-subject-out diagnostics and a coefficient agreement check.
 #'
 #' @keywords internal

@@ -19,10 +19,18 @@
 #'   design fixed, is robust to heteroscedasticity and behaves better than
 #'   the case bootstrap with few clusters.
 #'
-#' Three interval types are available, and all replicates are stored, so
+#' Four interval types are available, and all replicates are stored, so
 #' [confint()] can return another type without refitting (BCa only if the
 #' jackknife was computed):
 #'
+#' * `"expanded"` (default): the percentile interval taken at a wider nominal
+#'   level, so that it matches a *t* interval with \eqn{G - 1} degrees of
+#'   freedom, where \eqn{G} is the number of clusters (expanded percentile
+#'   interval; Hesterberg, 2015). Plain percentile intervals are too narrow
+#'   with few clusters; the correction removes most of that shortfall and has
+#'   little effect with many clusters (about 2% wider with 30 clusters).
+#'   The limits are the quantiles at
+#'   \eqn{\Phi(\mp \sqrt{G / (G - 1)}\, t_{1 - \alpha/2,\, G - 1})}.
 #' * `"percentile"`: quantiles of the bootstrap distribution.
 #' * `"bca"`: bias-corrected and accelerated (Efron, 1987), with acceleration
 #'   estimated by a leave-one-cluster-out jackknife. It corrects for bias and
@@ -40,7 +48,8 @@
 #' @param model A linear model fitted with [stats::lm()] or [lme4::lmer()].
 #' @param cluster Name of the column identifying the clusters to resample.
 #' @param resample Resampling scheme: `"case"` or `"wild"`. See Details.
-#' @param ci Interval type: `"percentile"`, `"bca"` or `"basic"`.
+#' @param ci Interval type: `"expanded"` (default), `"percentile"`, `"bca"`
+#'   or `"basic"`. See Details.
 #' @param level Confidence level.
 #' @param terms Names of the fixed-effect coefficients. By default all except
 #'   the intercept and the coefficients of terms involving `cluster` (or
@@ -57,6 +66,10 @@
 #'   [confint()], [tidy()][generics::tidy] and [plot()].
 #'
 #' @references
+#' Hesterberg, T. C. (2015). What teachers should know about the bootstrap:
+#' Resampling in the undergraduate statistics curriculum. *The American
+#' Statistician, 69*(4), 371-386. \doi{10.1080/00031305.2015.1089789}
+#'
 #' Efron, B. (1987). Better bootstrap confidence intervals. *Journal of the
 #' American Statistical Association, 82*(397), 171-185.
 #' \doi{10.1080/01621459.1987.10478410}
@@ -81,7 +94,7 @@
 boot_ci <- function(model,
                     cluster,
                     resample = c("case", "wild"),
-                    ci = c("percentile", "bca", "basic"),
+                    ci = c("expanded", "percentile", "bca", "basic"),
                     level = 0.95,
                     terms = NULL,
                     B = 4999,
@@ -253,6 +266,8 @@ boot_intervals <- function(x, type, level) {
     b <- b[!is.na(b)]
     est <- x$estimate[[cf]]
     lim <- switch(type,
+      expanded = stats::quantile(b, expanded_probs(x$n_clusters, alpha),
+                                 names = FALSE, type = 6),
       percentile = stats::quantile(b, c(alpha, 1 - alpha), names = FALSE,
                                    type = 6),
       basic = 2 * est - stats::quantile(b, c(1 - alpha, alpha), names = FALSE,
@@ -266,6 +281,16 @@ boot_intervals <- function(x, type, level) {
   out <- do.call(rbind, rows)
   rownames(out) <- NULL
   out
+}
+
+# Tail probabilities of the expanded percentile interval (Hesterberg, 2015):
+# the normal quantile is replaced by a t quantile with G - 1 df, inflated by
+# sqrt(G / (G - 1)).
+expanded_probs <- function(n_clusters, alpha) {
+  if (n_clusters < 2) return(c(alpha, 1 - alpha))
+  z <- sqrt(n_clusters / (n_clusters - 1)) *
+    stats::qt(1 - alpha, n_clusters - 1)
+  stats::pnorm(c(-z, z))
 }
 
 bca_limits <- function(boot, est, jack, alpha) {
@@ -299,15 +324,15 @@ bca_limits <- function(boot, est, jack, alpha) {
 #' @param object An object of class `lmmr_boot`.
 #' @param parm Coefficients to return; all by default.
 #' @param level Confidence level.
-#' @param type Interval type: `"percentile"`, `"bca"` or `"basic"`. Defaults
-#'   to the type used in [boot_ci()].
+#' @param type Interval type: `"expanded"`, `"percentile"`, `"bca"` or
+#'   `"basic"`. Defaults to the type used in [boot_ci()].
 #' @param ... Not used.
 #' @return A matrix with one row per coefficient and the lower and upper
 #'   limits, as returned by [stats::confint()].
 #' @export
 confint.lmmr_boot <- function(object, parm = NULL, level = object$level,
                               type = object$ci, ...) {
-  type <- match.arg(type, c("percentile", "bca", "basic"))
+  type <- match.arg(type, c("expanded", "percentile", "bca", "basic"))
   iv <- boot_intervals(object, type, level)
   if (!is.null(parm)) iv <- iv[iv$term %in% parm, , drop = FALSE]
   pct <- paste0(format(100 * c((1 - level) / 2, 1 - (1 - level) / 2),
@@ -341,7 +366,8 @@ print.lmmr_boot <- function(x, digits = 3, ...) {
 }
 
 ci_label <- function(type) {
-  switch(type, percentile = "percentile", bca = "BCa", basic = "basic")
+  switch(type, expanded = "expanded percentile", percentile = "percentile",
+         bca = "BCa", basic = "basic")
 }
 
 #' Tidy a bootstrap
@@ -367,9 +393,10 @@ tidy.lmmr_boot <- function(x, type = c("summary", "replicates"), ...) {
 
 #' Plot a bootstrap
 #'
-#' Shows the bootstrap distribution of each coefficient with the estimate and
-#' the percentile interval, and the BCa interval if it was computed, so that
-#' their differences (due to bias or skewness) can be seen.
+#' Shows the bootstrap distribution of each coefficient with the estimate,
+#' the expanded percentile and percentile intervals, and the BCa interval if
+#' it was computed, so that their differences (due to few clusters, bias or
+#' skewness) can be seen.
 #'
 #' @param x An object of class `lmmr_boot`.
 #' @param ... Not used.
@@ -379,15 +406,17 @@ plot.lmmr_boot <- function(x, ...) {
   rlang::check_installed("ggplot2", reason = "to plot results.")
   reps <- tidy.lmmr_boot(x, type = "replicates")
   reps <- reps[!is.na(reps$estimate), ]
-  iv <- boot_intervals(x, "percentile", x$level)
-  if (!is.null(x$jackknife)) iv <- rbind(iv, boot_intervals(x, "bca", x$level))
-  iv$type <- factor(ifelse(iv$type == "bca", "BCa", "Percentile"),
-                    levels = c("Percentile", "BCa"))
+  shown <- unique(c("expanded", "percentile",
+                    if (!is.null(x$jackknife)) "bca"))
+  iv <- do.call(rbind, lapply(shown, function(t) boot_intervals(x, t, x$level)))
+  labs <- c(expanded = "Expanded percentile", percentile = "Percentile",
+            bca = "BCa")
+  iv$type <- factor(labs[iv$type], levels = labs[shown])
   peak <- vapply(split(reps$estimate, reps$term), function(v) {
     if (length(unique(v)) < 2) return(1)
     max(stats::density(v)$y)
   }, numeric(1))
-  iv$y <- -peak[iv$term] * ifelse(iv$type == "BCa", 0.06, 0.12)
+  iv$y <- -peak[iv$term] * 0.06 * as.integer(iv$type)
   est <- data.frame(term = names(x$estimate), estimate = unname(x$estimate))
   ggplot2::ggplot(reps, ggplot2::aes(x = .data$estimate)) +
     ggplot2::geom_density(fill = "grey85", colour = "grey40") +
@@ -399,7 +428,8 @@ plot.lmmr_boot <- function(x, ...) {
                    y = .data$y, yend = .data$y, colour = .data$type),
       inherit.aes = FALSE, linewidth = 1.2
     ) +
-    ggplot2::scale_colour_manual(values = c(Percentile = "grey30",
+    ggplot2::scale_colour_manual(values = c(`Expanded percentile` = "grey15",
+                                            Percentile = "grey60",
                                             BCa = "#C0392B"), name = NULL) +
     ggplot2::facet_wrap(~term, scales = "free") +
     ggplot2::labs(

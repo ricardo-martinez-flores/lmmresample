@@ -39,7 +39,8 @@ extracted per trial, or one value per participant. Supported models are
   procedure, using one shared permutation for all tests, for example across
   several features extracted from the same trials.
 - **Bootstrap confidence intervals** by resampling whole participants (case
-  or wild bootstrap), with percentile, BCa and basic intervals.
+  or wild bootstrap), with expanded percentile (the default, corrected for
+  few participants), percentile, BCa and basic intervals.
 - **Diagnostics:** residual autocorrelation, residual time courses by
   condition, leave-one-participant-out influence, and agreement between the
   model coefficient and participant-level differences.

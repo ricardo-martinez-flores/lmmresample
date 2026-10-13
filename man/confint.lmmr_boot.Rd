@@ -13,8 +13,8 @@
 
 \item{level}{Confidence level.}
 
-\item{type}{Interval type: \code{"percentile"}, \code{"bca"} or \code{"basic"}. Defaults
-to the type used in \code{\link[=boot_ci]{boot_ci()}}.}
+\item{type}{Interval type: \code{"expanded"}, \code{"percentile"}, \code{"bca"} or
+\code{"basic"}. Defaults to the type used in \code{\link[=boot_ci]{boot_ci()}}.}
 
 \item{...}{Not used.}
 }

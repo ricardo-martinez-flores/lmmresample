@@ -1,3 +1,19 @@
+# lmmresample 0.0.0.9001
+
+* `perm_test()` and `perm_maxt()` with Freedman-Lane: the reduced model now
+  also drops random slopes of lower-order terms contained in the tested term
+  when the other variables of that term are constant within the grouping
+  factor. Previously, testing a between-participant interaction such as
+  `group:condition` in a model with `(1 + condition | participant)` kept the
+  condition slope, which absorbed the interaction: the test had no power and
+  its p-values were centred near 0.5 with or without an effect.
+* `boot_ci()` gains the expanded percentile interval (`ci = "expanded"`,
+  Hesterberg, 2015), now the default. Plain percentile intervals were too
+  narrow with few clusters (about 87% coverage of 95% intervals with 8
+  participants and 91% with 15 in simulations); the expanded interval matches
+  a t interval with G - 1 degrees of freedom and changes little with many
+  clusters.
+
 # lmmresample 0.0.0.9000
 
 * `diag_acf()` now returns a bias-corrected AR(1) coefficient (`phi`).

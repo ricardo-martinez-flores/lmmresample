@@ -8,7 +8,7 @@ boot_ci(
   model,
   cluster,
   resample = c("case", "wild"),
-  ci = c("percentile", "bca", "basic"),
+  ci = c("expanded", "percentile", "bca", "basic"),
   level = 0.95,
   terms = NULL,
   B = 4999,
@@ -23,7 +23,8 @@ boot_ci(
 
 \item{resample}{Resampling scheme: \code{"case"} or \code{"wild"}. See Details.}
 
-\item{ci}{Interval type: \code{"percentile"}, \code{"bca"} or \code{"basic"}.}
+\item{ci}{Interval type: \code{"expanded"} (default), \code{"percentile"}, \code{"bca"}
+or \code{"basic"}. See Details.}
 
 \item{level}{Confidence level.}
 
@@ -66,10 +67,18 @@ design fixed, is robust to heteroscedasticity and behaves better than
 the case bootstrap with few clusters.
 }
 
-Three interval types are available, and all replicates are stored, so
+Four interval types are available, and all replicates are stored, so
 \code{\link[=confint]{confint()}} can return another type without refitting (BCa only if the
 jackknife was computed):
 \itemize{
+\item \code{"expanded"} (default): the percentile interval taken at a wider nominal
+level, so that it matches a \emph{t} interval with \eqn{G - 1} degrees of
+freedom, where \eqn{G} is the number of clusters (expanded percentile
+interval; Hesterberg, 2015). Plain percentile intervals are too narrow
+with few clusters; the correction removes most of that shortfall and has
+little effect with many clusters (about 2\% wider with 30 clusters).
+The limits are the quantiles at
+\eqn{\Phi(\mp \sqrt{G / (G - 1)}\, t_{1 - \alpha/2,\, G - 1})}.
 \item \code{"percentile"}: quantiles of the bootstrap distribution.
 \item \code{"bca"}: bias-corrected and accelerated (Efron, 1987), with acceleration
 estimated by a leave-one-cluster-out jackknife. It corrects for bias and
@@ -97,6 +106,10 @@ bt
 confint(bt, type = "bca")
 }
 \references{
+Hesterberg, T. C. (2015). What teachers should know about the bootstrap:
+Resampling in the undergraduate statistics curriculum. \emph{The American
+Statistician, 69}(4), 371-386. \doi{10.1080/00031305.2015.1089789}
+
 Efron, B. (1987). Better bootstrap confidence intervals. \emph{Journal of the
 American Statistical Association, 82}(397), 171-185.
 \doi{10.1080/01621459.1987.10478410}
