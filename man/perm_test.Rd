@@ -83,8 +83,13 @@ residuals are permuted between whole units (or sign-flipped by block with
 1983; Winkler et al., 2014). It accounts for nuisance terms and allows
 tests of interactions (e.g. \code{"condition:time"}) and of terms with several
 coefficients. Random slopes of \code{term} are removed from the reduced model,
-because they would absorb the tested effect. Permuting residuals between units requires units of equal
-size within blocks; sign-flipping accepts units of any size.
+because they would absorb the tested effect. So are random slopes of a
+lower-order term contained in \code{term} when the other variables of \code{term}
+are constant within the grouping factor: when testing a
+between-participant \code{group:condition} interaction, the slope in
+\code{(1 + condition | participant)} would absorb the group difference in
+condition effects. Permuting residuals between units requires units of
+equal size within blocks; sign-flipping accepts units of any size.
 }
 
 With \code{method = "auto"} (default), relabelling is used for a main effect that

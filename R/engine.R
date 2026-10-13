@@ -104,7 +104,13 @@ term_info <- function(model, term, call = rlang::caller_env()) {
 # Reduced model formula: the tested term is removed from the fixed effects
 # and from any random-effects term in which it appears as a slope, because a
 # random slope of the tested term would absorb the effect into the
-# predicted random effects and leak it into the fitted values.
+# predicted random effects and leak it into the fitted values. The same
+# applies to a random slope of a lower-order term contained in the tested
+# term when the remaining variables of the tested term are constant within
+# the grouping factor: e.g. when testing group:condition with group constant
+# within participant, (condition | participant) absorbs the interaction,
+# because a group difference in condition effects is a difference between
+# participants' condition slopes.
 reduced_formula <- function(model, term) {
   f <- stats::formula(model)
   env <- environment(f)
@@ -124,10 +130,16 @@ reduced_formula <- function(model, term) {
   fixed <- lme4::nobars(f)
   fixed_rhs <- drop_label(paste(deparse(fixed[[3]], width.cutoff = 500L),
                                 collapse = " "), term)
+  mf <- stats::model.frame(model)
   bars <- vapply(lme4::findbars(f), function(bar) {
     bar_lhs <- paste(deparse(bar[[2]], width.cutoff = 500L), collapse = " ")
     group <- paste(deparse(bar[[3]], width.cutoff = 500L), collapse = " ")
-    new_lhs <- drop_label(bar_lhs, term)
+    slopes <- attr(stats::terms(stats::as.formula(paste("~", bar_lhs))),
+                   "term.labels")
+    absorbing <- Filter(function(lab) {
+      absorbs_term(lab, term, all.vars(bar[[3]]), mf)
+    }, slopes)
+    new_lhs <- drop_label(bar_lhs, c(term, absorbing))
     # A random-effects term left without any effect is dropped entirely
     if (new_lhs == "0") return(NA_character_)
     paste0("(", new_lhs, " | ", group, ")")
@@ -135,6 +147,26 @@ reduced_formula <- function(model, term) {
   bars <- bars[!is.na(bars)]
   stats::as.formula(paste(lhs, "~", paste(c(fixed_rhs, bars),
                                           collapse = " + ")), env = env)
+}
+
+# TRUE if the random slope `slope` (grouped by `group_vars`) can absorb the
+# fixed effect `term`: every variable of the slope is a variable of `term`,
+# and every other variable of `term` is constant within the groups.
+absorbs_term <- function(slope, term, group_vars, mf) {
+  if (identical(slope, term)) return(TRUE)
+  vars_of <- function(lab) all.vars(stats::as.formula(paste("~", lab)))
+  slope_vars <- vars_of(slope)
+  term_vars <- vars_of(term)
+  if (length(slope_vars) == 0 || !all(slope_vars %in% term_vars)) return(FALSE)
+  others <- setdiff(term_vars, slope_vars)
+  if (length(others) == 0 || !all(c(others, group_vars) %in% names(mf))) {
+    return(FALSE)
+  }
+  g <- interaction(mf[group_vars], drop = TRUE)
+  all(vapply(others, function(v) {
+    x <- mf[[v]]
+    all(tapply(as.character(x), g, function(z) length(unique(z)) == 1))
+  }, logical(1)))
 }
 
 # Random-effects terms of a fitted reduced model whose grouping factor is

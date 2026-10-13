@@ -223,3 +223,48 @@ test_that("lower-order terms are testable when interacting variables are centred
                          exch_signflip("participant"), B = 9),
                "centred")
 })
+
+test_that("random slopes that absorb a between-group interaction are dropped", {
+  d <- sim_blocks("mixed", n_participants = 12, n_trials = 10, n_time = 8,
+                  sd_slope = 0.3, seed = 5)
+  m <- suppressWarnings(suppressMessages(
+    lme4::lmer(y ~ group * condition + (1 + condition | participant), data = d)
+  ))
+  # group is constant within participant: the condition slope would absorb
+  # group:condition, so it is removed from the reduced model
+  f <- paste(deparse(reduced_formula(m, "group:condition")), collapse = "")
+  expect_match(f, "(1 | participant)", fixed = TRUE)
+  expect_false(grepl("condition | participant", f, fixed = TRUE))
+  # a slope whose other variables vary within the groups is kept
+  m2 <- suppressWarnings(suppressMessages(
+    lme4::lmer(y ~ condition * time + (1 + condition | participant), data = d)
+  ))
+  f2 <- paste(deparse(reduced_formula(m2, "condition:time")), collapse = "")
+  expect_match(f2, "condition | participant", fixed = TRUE)
+})
+
+test_that("maximal-model permutation detects a between-group interaction", {
+  skip_on_cran()
+  d <- sim_blocks("mixed", n_participants = 16, n_trials = 20, n_time = 10,
+                  sampling_rate = 10, effect_interaction = 1.5,
+                  sd_slope = 0.2, ar1 = 0.5, seed = 6)
+  m <- suppressWarnings(suppressMessages(
+    lme4::lmer(y ~ group * condition + (1 + condition | participant), data = d)
+  ))
+  r <- suppressWarnings(suppressMessages(
+    perm_test(m, "group:condition", "trial", exch_signflip("participant"),
+              B = 99, seed = 1)
+  ))
+  expect_lt(r$p.value, 0.05)
+  # Under the null the p-value is not stuck near the middle
+  d0 <- sim_blocks("mixed", n_participants = 16, n_trials = 20, n_time = 10,
+                   sampling_rate = 10, sd_slope = 0.2, ar1 = 0.5, seed = 7)
+  m0 <- suppressWarnings(suppressMessages(
+    lme4::lmer(y ~ group * condition + (1 + condition | participant), data = d0)
+  ))
+  r0 <- suppressWarnings(suppressMessages(
+    perm_test(m0, "group:condition", "trial", exch_signflip("participant"),
+              B = 99, seed = 1)
+  ))
+  expect_true(is.finite(r0$p.value))
+})

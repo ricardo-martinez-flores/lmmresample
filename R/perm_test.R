@@ -18,8 +18,13 @@
 #'   1983; Winkler et al., 2014). It accounts for nuisance terms and allows
 #'   tests of interactions (e.g. `"condition:time"`) and of terms with several
 #'   coefficients. Random slopes of `term` are removed from the reduced model,
-#'   because they would absorb the tested effect. Permuting residuals between units requires units of equal
-#'   size within blocks; sign-flipping accepts units of any size.
+#'   because they would absorb the tested effect. So are random slopes of a
+#'   lower-order term contained in `term` when the other variables of `term`
+#'   are constant within the grouping factor: when testing a
+#'   between-participant `group:condition` interaction, the slope in
+#'   `(1 + condition | participant)` would absorb the group difference in
+#'   condition effects. Permuting residuals between units requires units of
+#'   equal size within blocks; sign-flipping accepts units of any size.
 #'
 #' With `method = "auto"` (default), relabelling is used for a main effect that
 #' is a column of the data with a single coefficient, and Freedman-Lane
