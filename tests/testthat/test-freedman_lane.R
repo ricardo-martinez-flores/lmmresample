@@ -8,7 +8,7 @@ test_that("the reduced formula drops the term and its random slopes", {
   m <- lme4::lmer(y ~ condition * time + (1 + condition | participant),
                   data = d)
   f <- reduced_formula(m, "condition:time")
-  expect_false("condition:time" %in% attr(stats::terms(lme4::nobars(f)),
+  expect_false("condition:time" %in% attr(stats::terms(reformulas::nobars(f)),
                                            "term.labels"))
   expect_match(paste(deparse(f), collapse = ""), "condition | participant",
                fixed = TRUE)

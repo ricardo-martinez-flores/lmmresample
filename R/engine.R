@@ -127,11 +127,11 @@ reduced_formula <- function(model, term) {
                             collapse = " "), term)
     return(stats::as.formula(paste(lhs, "~", rhs), env = env))
   }
-  fixed <- lme4::nobars(f)
+  fixed <- reformulas::nobars(f)
   fixed_rhs <- drop_label(paste(deparse(fixed[[3]], width.cutoff = 500L),
                                 collapse = " "), term)
   mf <- stats::model.frame(model)
-  bars <- vapply(lme4::findbars(f), function(bar) {
+  bars <- vapply(reformulas::findbars(f), function(bar) {
     bar_lhs <- paste(deparse(bar[[2]], width.cutoff = 500L), collapse = " ")
     group <- paste(deparse(bar[[3]], width.cutoff = 500L), collapse = " ")
     slopes <- attr(stats::terms(stats::as.formula(paste("~", bar_lhs))),
@@ -176,7 +176,7 @@ absorbs_term <- function(slope, term, group_vars, mf) {
 # the tested effect.
 re_form_above_units <- function(fit, data, block) {
   if (!is_mixed(fit)) return(NULL)
-  bars <- lme4::findbars(stats::formula(fit))
+  bars <- reformulas::findbars(stats::formula(fit))
   keep <- vapply(bars, function(bar) {
     vars <- all.vars(bar[[3]])
     if (!all(vars %in% names(data))) return(FALSE)

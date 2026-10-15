@@ -1,3 +1,9 @@
+# lmmresample 0.0.0.9002
+
+* Formula helpers (`findbars()`, `nobars()`) are now taken from
+  reformulas, where recent versions of lme4 have moved them;
+  this removes a deprecation warning with lme4 >= 2.0.
+
 # lmmresample 0.0.0.9001
 
 * `perm_test()` and `perm_maxt()` with Freedman-Lane: the reduced model now

@@ -187,7 +187,7 @@ boot_ci <- function(model,
 # factors trigger a warning.
 nested_grouping <- function(model, data, cluster) {
   if (!is_mixed(model)) return(character(0))
-  bars <- lme4::findbars(stats::formula(model))
+  bars <- reformulas::findbars(stats::formula(model))
   cl <- as.character(data[[cluster]])
   nested <- character(0)
   for (bar in bars) {
