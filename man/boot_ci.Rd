@@ -10,6 +10,7 @@ boot_ci(
   resample = c("case", "wild"),
   ci = c("expanded", "percentile", "bca", "basic"),
   level = 0.95,
+  strata = NULL,
   terms = NULL,
   B = 4999,
   seed = NULL,
@@ -27,6 +28,10 @@ boot_ci(
 or \code{"basic"}. See Details.}
 
 \item{level}{Confidence level.}
+
+\item{strata}{Optional name of a column that is constant within each
+cluster (e.g. \code{"group"}). Case resampling is then done within its levels.
+See Details.}
 
 \item{terms}{Names of the fixed-effect coefficients. By default all except
 the intercept and the coefficients of terms involving \code{cluster} (or
@@ -87,6 +92,15 @@ requires one extra refit per cluster and is only computed when
 \code{ci = "bca"}.
 \item \code{"basic"}: reflection of the percentile interval around the estimate.
 }
+
+With \code{strata}, case resampling draws clusters separately within each
+stratum, so every bootstrap sample keeps the observed number of clusters
+per stratum (e.g. 20 controls and 10 patients). Use it when clusters belong
+to groups that are compared, such as patients and controls: unstratified
+resampling would produce samples with unbalanced or empty groups. The
+expanded percentile interval then uses \eqn{G - S} degrees of freedom,
+where \eqn{S} is the number of strata. The wild bootstrap keeps the design
+fixed, so strata are not needed there and \code{strata} is ignored.
 
 The case bootstrap requires clusters to be the top level of the design.
 When the model contains random effects crossed with \code{cluster} (e.g. items

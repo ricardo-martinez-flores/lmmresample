@@ -39,6 +39,15 @@
 #'   `ci = "bca"`.
 #' * `"basic"`: reflection of the percentile interval around the estimate.
 #'
+#' With `strata`, case resampling draws clusters separately within each
+#' stratum, so every bootstrap sample keeps the observed number of clusters
+#' per stratum (e.g. 20 controls and 10 patients). Use it when clusters belong
+#' to groups that are compared, such as patients and controls: unstratified
+#' resampling would produce samples with unbalanced or empty groups. The
+#' expanded percentile interval then uses \eqn{G - S} degrees of freedom,
+#' where \eqn{S} is the number of strata. The wild bootstrap keeps the design
+#' fixed, so strata are not needed there and `strata` is ignored.
+#'
 #' The case bootstrap requires clusters to be the top level of the design.
 #' When the model contains random effects crossed with `cluster` (e.g. items
 #' shared by all participants), the intervals reflect sampling of clusters
@@ -51,6 +60,9 @@
 #' @param ci Interval type: `"expanded"` (default), `"percentile"`, `"bca"`
 #'   or `"basic"`. See Details.
 #' @param level Confidence level.
+#' @param strata Optional name of a column that is constant within each
+#'   cluster (e.g. `"group"`). Case resampling is then done within its levels.
+#'   See Details.
 #' @param terms Names of the fixed-effect coefficients. By default all except
 #'   the intercept and the coefficients of terms involving `cluster` (or
 #'   grouping factors nested in it), which are not estimable in resampled
@@ -96,6 +108,7 @@ boot_ci <- function(model,
                     resample = c("case", "wild"),
                     ci = c("expanded", "percentile", "bca", "basic"),
                     level = 0.95,
+                    strata = NULL,
                     terms = NULL,
                     B = 4999,
                     seed = NULL,
@@ -120,13 +133,16 @@ boot_ci <- function(model,
   if (n_clusters < 3) {
     cli::cli_abort("At least 3 clusters are needed; found {n_clusters}.")
   }
+  stratum_of <- cluster_strata(data, cluster, strata)
+  n_strata <- if (is.null(stratum_of) || resample == "wild") 1L else
+    length(unique(stratum_of))
 
   nested <- nested_grouping(model, data, cluster)
   if (is.null(terms)) terms <- default_terms(model, c(cluster, nested))
   terms <- check_terms(terms, est)
   refit <- make_refitter(model)
   make_data <- if (resample == "case") {
-    case_resampler(data, cluster, nested)
+    case_resampler(data, cluster, nested, stratum_of)
   } else {
     wild_resampler(model, data, cluster)
   }
@@ -171,6 +187,8 @@ boot_ci <- function(model,
       level = level,
       cluster = cluster,
       n_clusters = n_clusters,
+      strata = if (resample == "case") strata else NULL,
+      n_strata = n_strata,
       B = B,
       B_used = sum(used),
       seed = seed,
@@ -212,14 +230,57 @@ nested_grouping <- function(model, data, cluster) {
   unique(nested)
 }
 
-case_resampler <- function(data, cluster, nested) {
+# Stratum of each cluster (in order of first appearance), or NULL. The
+# stratum column must be constant within clusters and every stratum must
+# contain at least two clusters.
+cluster_strata <- function(data, cluster, strata, call = rlang::caller_env()) {
+  if (is.null(strata)) return(NULL)
+  check_column_name(strata, "strata", call = call)
+  if (!strata %in% names(data)) {
+    cli::cli_abort("Column {.field {strata}} not found in the data.",
+                   call = call)
+  }
+  if (anyNA(data[[strata]])) {
+    cli::cli_abort("Column {.field {strata}} contains missing values.",
+                   call = call)
+  }
+  cl <- as.character(data[[cluster]])
+  st <- as.character(data[[strata]])
+  per_cluster <- tapply(st, factor(cl, levels = unique(cl)),
+                        function(x) length(unique(x)))
+  if (any(per_cluster > 1)) {
+    cli::cli_abort(c(
+      "{.field {strata}} must be constant within each {.field {cluster}}.",
+      "i" = "{sum(per_cluster > 1)} cluster{?s} belong{?s/} to more than one
+             stratum."
+    ), call = call)
+  }
+  stratum_of <- st[match(unique(cl), cl)]
+  size <- table(stratum_of)
+  if (any(size < 2)) {
+    cli::cli_abort(c(
+      "Every stratum needs at least 2 clusters.",
+      "x" = "Too few in: {.val {names(size)[size < 2]}}."
+    ), call = call)
+  }
+  stratum_of
+}
+
+case_resampler <- function(data, cluster, nested, stratum_of = NULL) {
   cl <- as.character(data[[cluster]])
   ids <- unique(cl)
   rows_of <- split(seq_len(nrow(data)), factor(cl, levels = ids))
+  # Positions of the clusters of each stratum; each position is filled with a
+  # cluster drawn from the same stratum
+  groups <- if (is.null(stratum_of)) list(seq_along(ids)) else
+    split(seq_along(ids), factor(stratum_of, levels = unique(stratum_of)))
   list(
     draw = function(B) {
-      matrix(sample.int(length(ids), length(ids) * B, replace = TRUE),
-             nrow = length(ids))
+      out <- matrix(0L, nrow = length(ids), ncol = B)
+      for (g in groups) {
+        out[g, ] <- g[sample.int(length(g), length(g) * B, replace = TRUE)]
+      }
+      out
     },
     build = function(draws, b) {
       pick <- draws[, b]
@@ -266,7 +327,8 @@ boot_intervals <- function(x, type, level) {
     b <- b[!is.na(b)]
     est <- x$estimate[[cf]]
     lim <- switch(type,
-      expanded = stats::quantile(b, expanded_probs(x$n_clusters, alpha),
+      expanded = stats::quantile(b, expanded_probs(
+        x$n_clusters, alpha, if (is.null(x$n_strata)) 1L else x$n_strata),
                                  names = FALSE, type = 6),
       percentile = stats::quantile(b, c(alpha, 1 - alpha), names = FALSE,
                                    type = 6),
@@ -286,10 +348,10 @@ boot_intervals <- function(x, type, level) {
 # Tail probabilities of the expanded percentile interval (Hesterberg, 2015):
 # the normal quantile is replaced by a t quantile with G - 1 df, inflated by
 # sqrt(G / (G - 1)).
-expanded_probs <- function(n_clusters, alpha) {
-  if (n_clusters < 2) return(c(alpha, 1 - alpha))
-  z <- sqrt(n_clusters / (n_clusters - 1)) *
-    stats::qt(1 - alpha, n_clusters - 1)
+expanded_probs <- function(n_clusters, alpha, n_strata = 1L) {
+  df <- n_clusters - n_strata
+  if (df < 1) return(c(alpha, 1 - alpha))
+  z <- sqrt(n_clusters / df) * stats::qt(1 - alpha, df)
   stats::pnorm(c(-z, z))
 }
 
@@ -345,7 +407,10 @@ confint.lmmr_boot <- function(object, parm = NULL, level = object$level,
 print.lmmr_boot <- function(x, digits = 3, ...) {
   f <- function(v) formatC(v, digits = digits, format = "f")
   cat("\nBootstrap confidence intervals (", x$resample, " bootstrap of `",
-      x$cluster, "`, ", x$n_clusters, " clusters)\n\n", sep = "")
+      x$cluster, "`, ", x$n_clusters, " clusters",
+      if (!is.null(x$strata)) paste0(" within ", x$n_strata, " strata of `",
+                                     x$strata, "`"),
+      ")\n\n", sep = "")
   iv <- x$intervals
   tab <- data.frame(
     Coefficient = iv$term,

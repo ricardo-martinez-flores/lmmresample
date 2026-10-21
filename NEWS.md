@@ -1,3 +1,11 @@
+# lmmresample 0.0.0.9003
+
+* `boot_ci()` gains `strata`: with case resampling, clusters are drawn within
+  the levels of a cluster-level column such as `group`, so every bootstrap
+  sample keeps the observed number of participants per group. The expanded
+  percentile interval then uses G - S degrees of freedom. The wild bootstrap
+  keeps the design fixed and ignores `strata`.
+
 # lmmresample 0.0.0.9002
 
 * Formula helpers (`findbars()`, `nobars()`) are now taken from

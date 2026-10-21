@@ -155,3 +155,73 @@ test_that("expanded percentile is the default and widens with few clusters", {
                        type = 6)
   expect_equal(unname(ex[1, ]), q)
 })
+
+strata_data <- function(n_control = 8, n_patient = 4, seed = 3) {
+  d <- sim_blocks("within", "trial", n_participants = n_control + n_patient,
+                  n_trials = 12, effect_condition = 0.5, sd_slope = 0.2,
+                  seed = seed)
+  parts <- levels(d$participant)
+  grp <- rep(c("control", "patient"), c(n_control, n_patient))
+  d$group <- factor(grp[match(d$participant, parts)])
+  d
+}
+
+test_that("stratified case resampling keeps the clusters per stratum", {
+  d <- strata_data()
+  m <- suppressMessages(
+    lme4::lmer(y ~ group * condition + (1 | participant), data = d)
+  )
+  st <- cluster_strata(d, "participant", "group")
+  rs <- case_resampler(d, "participant", character(0), st)
+  draws <- with_seed(1, rs$draw(200))
+  ids <- unique(as.character(d$participant))
+  # every position is filled with a cluster of its own stratum
+  expect_true(all(st[draws] == rep(st, times = 200)))
+  nd <- rs$build(draws, 1)
+  per_group <- tapply(as.character(nd$participant), nd$group,
+                      function(x) length(unique(x)))
+  expect_equal(as.numeric(per_group[c("control", "patient")]), c(8, 4))
+  bt <- suppressWarnings(boot_ci(m, "participant", strata = "group",
+                                 terms = "grouppatient:conditionB",
+                                 B = 49, seed = 1))
+  expect_equal(bt$n_strata, 2L)
+  expect_identical(bt$strata, "group")
+  expect_equal(bt$B_used, 49)
+  b <- bt$boot[, 1]
+  G <- 12; S <- 2
+  z <- sqrt(G / (G - S)) * stats::qt(0.975, G - S)
+  q <- stats::quantile(b, stats::pnorm(c(-z, z)), names = FALSE, type = 6)
+  expect_equal(unname(confint(bt)[1, ]), q)
+  expect_output(print(bt), "within 2 strata")
+})
+
+test_that("strata must be constant within clusters and not too small", {
+  d <- strata_data()
+  m <- suppressMessages(
+    lme4::lmer(y ~ group * condition + (1 | participant), data = d)
+  )
+  expect_error(boot_ci(m, "participant", strata = "condition", B = 9),
+               "constant within each")
+  expect_error(boot_ci(m, "participant", strata = "nothere", B = 9),
+               "not found")
+  d2 <- strata_data(n_control = 10, n_patient = 1)
+  m2 <- suppressMessages(
+    lme4::lmer(y ~ group * condition + (1 | participant), data = d2)
+  )
+  expect_error(boot_ci(m2, "participant", strata = "group", B = 9),
+               "at least 2 clusters")
+})
+
+test_that("strata are ignored by the wild bootstrap", {
+  d <- strata_data()
+  m <- suppressMessages(
+    lme4::lmer(y ~ group * condition + (1 | participant), data = d)
+  )
+  a <- suppressWarnings(boot_ci(m, "participant", resample = "wild",
+                                strata = "group", B = 19, seed = 2))
+  b <- suppressWarnings(boot_ci(m, "participant", resample = "wild",
+                                B = 19, seed = 2))
+  expect_equal(a$boot, b$boot)
+  expect_null(a$strata)
+  expect_equal(a$n_strata, 1L)
+})
