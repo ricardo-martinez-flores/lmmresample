@@ -255,9 +255,9 @@ resolve_coef <- function(model, term, coef = NULL, call = rlang::caller_env()) {
       cli::cli_abort(c(
         "{.val {term}} is involved in an interaction
          ({.val {interactions}}).",
-        "i" = "Tests of terms involved in interactions require permutation of
-               residuals (Freedman-Lane), planned for a future version.",
-        "i" = "Fit a model without the interaction to test the main effect."
+        "i" = "Terms involved in interactions are tested by permutation of
+               residuals: use {.code method = \"freedman-lane\"}, which
+               {.code method = \"auto\"} selects."
       ), call = call)
     }
   }

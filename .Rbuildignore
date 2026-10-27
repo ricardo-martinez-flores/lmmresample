@@ -3,5 +3,4 @@
 ^LICENSE\.md$
 ^\.github$
 ^README\.Rmd$
-^design$
 ^\.claude$
