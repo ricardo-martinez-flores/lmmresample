@@ -194,12 +194,17 @@ re_form_above_units <- function(fit, data, block) {
 
 # Build an engine for one data set -----------------------------------------
 
+# `reduced`: refitter of the reduced model, built beforehand when the engine
+# is built in a parallel worker (where the arguments of the model call may not
+# be found).
 build_engine <- function(model, data, term, test, unit, exchange,
-                         time = NULL, call = rlang::caller_env()) {
+                         time = NULL, reduced = NULL,
+                         call = rlang::caller_env()) {
   if (test$method == "relabel") {
     relabel_engine(data, term, unit, exchange, call = call)
   } else {
-    fl_engine(model, data, term, unit, exchange, time = time, call = call)
+    fl_engine(model, data, term, unit, exchange, time = time,
+              reduced = reduced, call = call)
   }
 }
 
@@ -236,15 +241,17 @@ relabel_engine <- function(data, term, unit, exchange,
 }
 
 fl_engine <- function(model, data, term, unit, exchange, time = NULL,
-                      call = rlang::caller_env()) {
+                      reduced = NULL, call = rlang::caller_env()) {
   response <- response_name(model, call = call)
   ub <- build_units(data, NULL, unit, exchange, call = call)
   units <- ub$units
   row_unit <- ub$row_unit
 
   # Reduced model fitted to these data
-  reduced <- make_refitter(model, formula = reduced_formula(model, term),
-                           call = call)
+  if (is.null(reduced)) {
+    reduced <- make_refitter(model, formula = reduced_formula(model, term),
+                             call = call)
+  }
   fit_r <- suppressWarnings(suppressMessages(
     tryCatch(reduced(data), error = function(e) e)
   ))

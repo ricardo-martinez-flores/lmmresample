@@ -120,3 +120,27 @@ test_that("calibration detects the liberal Wald test with autocorrelation", {
   expect_gt(rej$rejection[rej$method == "Wald"], 0.2)
   expect_lt(rej$rejection[rej$method == "Permutation"], 0.15)
 })
+
+test_that("calibration does not need the model call's arguments in workers", {
+  skip_if_not_installed("lme4")
+  set.seed(3)
+  d <- data.frame(participant = factor(rep(1:8, each = 10)),
+                  trial = factor(1:80),
+                  condition = factor(rep(c("a", "b"), 40)),
+                  x = rnorm(80))
+  d$y <- rnorm(8)[d$participant] + rnorm(80)
+  env <- new.env()
+  env$ctrl <- lme4::lmerControl(calc.derivs = FALSE)
+  env$d <- d
+  m <- local(suppressMessages(lme4::lmer(y ~ condition + x + (1 | participant),
+                                         data = d, control = ctrl)),
+             envir = env)
+  test <- resolve_test(m, d, "x", NULL, "freedman-lane")
+  refit <- make_refitter(m)
+  reduced <- make_refitter(m, formula = reduced_formula(m, "x"))
+  rm("ctrl", envir = env)
+  out <- calibrate_one(m, refit, reduced, d, "x", test, "trial",
+                       exch_signflip("participant"), NULL, 9, Inf, "t")
+  expect_false(is.na(out$p_perm))
+  expect_equal(out$B_used, 9)
+})

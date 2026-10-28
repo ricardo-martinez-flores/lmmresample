@@ -114,6 +114,10 @@ perm_calibrate <- function(model,
   simulate_y <- make_null_simulator(model, data, test$coefs, null, ar1,
                                     series, time)
   refit <- make_refitter(model)
+  # Built here, not in the workers, where the arguments of the model call
+  # (e.g. a control object) may not exist
+  reduced <- if (test$method == "relabel") NULL else
+    make_refitter(model, formula = reduced_formula(model, term))
   label <- stat_label(model)
   df_resid <- if (inherits(model, "lm")) stats::df.residual(model) else Inf
 
@@ -126,8 +130,8 @@ perm_calibrate <- function(model,
     out <- with_seed(sim_seeds[i], kind = rng_kind, expr = {
       sim_data <- data
       sim_data[[response]] <- simulate_y()
-      calibrate_one(model, refit, sim_data, term, test, unit, exchange, time, B,
-                    df_resid, label)
+      calibrate_one(model, refit, reduced, sim_data, term, test, unit,
+                    exchange, time, B, df_resid, label)
     })
     if (use_progress) p()
     out
@@ -165,8 +169,8 @@ perm_calibrate <- function(model,
 
 # One simulated data set: observed statistic, Wald p-value and permutation
 # p-value, with refits run sequentially (parallelism is over simulations).
-calibrate_one <- function(model, refit, sim_data, term, test, unit, exchange,
-                          time, B, df_resid, label) {
+calibrate_one <- function(model, refit, reduced, sim_data, term, test, unit,
+                          exchange, time, B, df_resid, label) {
   failed <- list(p_perm = NA_real_, p_wald = NA_real_, B_used = 0)
   obs <- safe_refit(refit, sim_data, test$coefs, test$type)
   if (obs$status %in% c("failed", "nonconverged")) return(failed)
@@ -180,7 +184,7 @@ calibrate_one <- function(model, refit, sim_data, term, test, unit, exchange,
   }
   engine <- tryCatch(
     suppressWarnings(build_engine(model, sim_data, term, test, unit,
-                                  exchange, time)),
+                                  exchange, time, reduced = reduced)),
     error = function(e) NULL
   )
   if (is.null(engine)) return(failed)
