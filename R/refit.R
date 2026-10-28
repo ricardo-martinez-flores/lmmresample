@@ -141,16 +141,25 @@ make_refitter <- function(model, formula = NULL, call = rlang::caller_env()) {
   }
 }
 
-# Packages that provide functions used in model formulas (e.g. splines for
-# ns()), which must be attached in parallel workers so that refits can
-# evaluate the formula.
+# Packages that provide the fitting function (e.g. lme4 for lmer()) and the
+# functions used in model formulas (e.g. splines for ns()), which must be
+# attached in parallel workers so that refits can evaluate the model call.
 refit_packages <- function(...) {
   models <- list(...)
   pkgs <- unlist(lapply(models, function(model) {
     f <- stats::formula(model)
     env <- model_env(model)
     fns <- unique(all.names(f))
-    vapply(fns, function(fn) {
+    fit_fn <- tryCatch(stats::getCall(model)[[1]], error = function(e) NULL)
+    if (is.call(fit_fn) && identical(fit_fn[[1]], as.name("::"))) {
+      fit_fn <- NULL
+      fit_pkg <- as.character(stats::getCall(model)[[1]][[2]])
+    } else {
+      fit_pkg <- NULL
+    }
+    if (is.name(fit_fn)) fns <- union(as.character(fit_fn), fns)
+    s4_pkg <- attr(class(model), "package")
+    found <- vapply(fns, function(fn) {
       obj <- tryCatch(get(fn, envir = env, mode = "function"),
                       error = function(e) NULL)
       if (is.null(obj) || is.primitive(obj)) return(NA_character_)
@@ -158,6 +167,7 @@ refit_packages <- function(...) {
       if (is.null(ns) || !isNamespace(ns)) return(NA_character_)
       getNamespaceName(ns)
     }, character(1))
+    c(fit_pkg, s4_pkg, found)
   }))
   pkgs <- unique(stats::na.omit(unname(pkgs)))
   setdiff(pkgs, c("base", "stats", "methods", "utils", "graphics",

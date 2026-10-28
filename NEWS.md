@@ -1,3 +1,11 @@
+# lmmresample 0.0.0.9005
+
+* Parallel workers now attach the package of the model's fitting function
+  (e.g. lme4), so that refits in `perm_calibrate()` and the other resampling
+  functions no longer fail when that package is not attached in the workers.
+* `perm_calibrate()` reports a rejection rate of `NA` instead of failing when
+  no simulation gave a valid p-value.
+
 # lmmresample 0.0.0.9004
 
 * New `perm_pairwise()` for pairwise comparisons between the levels of a

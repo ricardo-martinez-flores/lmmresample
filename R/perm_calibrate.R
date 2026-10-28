@@ -201,6 +201,10 @@ rejection_table <- function(pvalues, alpha) {
     p <- pvalues[[method]]
     p <- p[!is.na(p)]
     k <- sum(p <= alpha)
+    if (length(p) == 0) {
+      return(data.frame(method = method, rejection = NA_real_,
+                        lower = NA_real_, upper = NA_real_, n = 0L))
+    }
     ci <- stats::binom.test(k, length(p))$conf.int
     data.frame(method = method, rejection = k / length(p), lower = ci[1],
                upper = ci[2], n = length(p))
@@ -215,6 +219,7 @@ uniformity_test <- function(p) {
 }
 
 calib_verdict <- function(row, alpha) {
+  if (is.na(row$lower)) return("no valid simulations")
   if (row$lower <= alpha && row$upper >= alpha) return("consistent with alpha")
   if (row$lower > alpha) "liberal (too many rejections)" else
     "conservative (too few rejections)"
