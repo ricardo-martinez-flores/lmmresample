@@ -1,3 +1,14 @@
+# lmmresample 0.0.0.9004
+
+* New `perm_pairwise()` for pairwise comparisons between the levels of a
+  factor (post hoc tests). Each pair is tested by Freedman-Lane permutation
+  in a reparametrisation of the model where the other levels stay in the
+  reduced model, so an effect of another level does not leak into the test
+  of a pair. Pairs are compared in level or through an interaction (e.g.
+  with a spline of time), adjusted by Westfall-Young max-t or min-p
+  (step-down) or by Holm, with optional bootstrap intervals of each
+  difference.
+
 # lmmresample 0.0.0.9003
 
 * `boot_ci()` gains `strata`: with case resampling, clusters are drawn within

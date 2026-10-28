@@ -38,6 +38,10 @@ extracted per trial, or one value per participant. Supported models are
 - **Family-wise error control** across several outcomes with the max-t
   procedure, using one shared permutation for all tests, for example across
   several features extracted from the same trials.
+- **Pairwise comparisons** between the levels of a factor (post hoc tests),
+  in level or in time course, with Freedman–Lane tests that keep the other
+  levels in the model, family-wise adjustment across pairs and optional
+  bootstrap intervals of each difference.
 - **Bootstrap confidence intervals** by resampling whole participants (case
   or wild bootstrap), with expanded percentile (the default, corrected for
   few participants), percentile, BCa and basic intervals.
