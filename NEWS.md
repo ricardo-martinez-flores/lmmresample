@@ -3,6 +3,10 @@
 * Parallel workers now attach the package of the model's fitting function
   (e.g. lme4), so that refits in `perm_calibrate()` and the other resampling
   functions no longer fail when that package is not attached in the workers.
+* `perm_calibrate()` builds the reduced model before the simulations are
+  sent to parallel workers, so that calibration no longer fails when the
+  model call refers to objects of the calling environment (e.g. a control
+  object).
 * `perm_calibrate()` reports a rejection rate of `NA` instead of failing when
   no simulation gave a valid p-value.
 
