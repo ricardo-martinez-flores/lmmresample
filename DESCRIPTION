@@ -1,6 +1,6 @@
 Package: lmmresample
 Title: Resampling Inference for Mixed Models of Densely Sampled Time Series
-Version: 0.0.0.9005
+Version: 0.1.0
 Authors@R: c(
     person("Ricardo", "Martínez-Flores", , "ricardo.antonio.martinezf@gmail.com",
            role = c("aut", "cre"),
@@ -38,8 +38,12 @@ Imports:
 Suggests:
     future,
     ggplot2,
+    knitr,
     progressr,
+    rmarkdown,
+    splines,
     testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 URL: https://github.com/ricardo-martinez-flores/lmmresample
 BugReports: https://github.com/ricardo-martinez-flores/lmmresample/issues

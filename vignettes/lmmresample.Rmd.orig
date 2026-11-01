@@ -1,0 +1,191 @@
+---
+title: "Getting started with lmmresample"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with lmmresample}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.path = "figures/start-",
+                      fig.width = 6, fig.height = 3.5, dpi = 96)
+```
+
+*This vignette is precomputed: the results shown were obtained with the code
+displayed, which takes a few minutes to run.*
+
+`lmmresample` gives permutation tests and bootstrap confidence intervals for
+mixed models (`lme4::lmer()`) and linear models (`lm()`) fitted to repeated
+measurements organised in blocks: samples within trials, trials within
+participants. Resampling always moves whole blocks and refits the model you
+already have, so the dependence within blocks is carried into the reference
+distribution instead of having to be modelled.
+
+This vignette works through a trial-level analysis: one value per trial, two
+conditions, every participant seeing both. The vignette
+`vignette("time-courses")` covers full time series, and
+`vignette("multiple-comparisons")` covers families of tests and pairwise
+comparisons.
+
+```{r setup, message = FALSE}
+library(lmmresample)
+library(lme4)
+```
+
+## Example data
+
+`sim_blocks()` simulates block-structured data with known effects. Here, 24
+participants complete 40 trials each in conditions A and B; condition B
+increases the outcome by 0.3 on average, and participants differ in the size
+of that effect (`sd_slope`).
+
+```{r data}
+d <- sim_blocks("within", level = "trial", n_participants = 24, n_trials = 40,
+                effect_condition = 0.3, sd_slope = 0.4, seed = 1)
+head(d[c("participant", "trial", "trial_index", "condition", "y")])
+```
+
+## Why Wald tests can mislead
+
+A common analysis fits a random intercept for each participant and reads the
+Wald (t) test of the condition coefficient:
+
+```{r wald}
+m <- lmer(y ~ condition + (1 | participant), data = d)
+summary(m)$coefficients
+```
+
+The standard error assumes that the condition effect is the same in every
+participant. Because it is not, the 960 trials carry much less independent
+information about the mean effect than the model assumes, and the test is
+too liberal. Adding a random slope (the maximal model) fixes this here, but in
+richer designs the maximal model often fails to converge or is singular, and
+in time-series data even the maximal model is not enough (see
+`vignette("time-courses")`).
+
+## A permutation test on the same model
+
+`perm_test()` keeps the model as it is and builds the null distribution of the
+statistic by resampling. Two arguments describe the design:
+
+* `unit`: the column identifying what is permuted, here the trial;
+* `exchange`: which units may be exchanged. `exch_signflip("participant")`
+  swaps the condition labels of all trials of a random subset of participants,
+  which reverses their individual effects. This tests whether the *mean*
+  effect is zero while allowing participants to differ in their effect.
+
+```{r perm}
+pt <- perm_test(m, "condition", unit = "trial",
+                exchange = exch_signflip("participant"), B = 1999, seed = 1)
+pt
+```
+
+```{r perm-plot, fig.height = 3}
+plot(pt)
+```
+
+The other exchangeability declarations are `exch_within("participant")`,
+which permutes trials within participants and tests the sharp null of no
+effect in anyone, and `exch_free()`, which permutes freely and suits
+between-group designs (e.g. `unit = "participant"` with group membership as
+the tested term). `exch_free(strata = "site")` restricts permutation to
+within strata.
+
+The test refits the full model for every permutation, so it can take some
+time with large data sets. Computation runs in parallel through the
+[future](https://future.futureverse.org/) framework:
+
+```{r future, eval = FALSE}
+future::plan("multisession", workers = 4)
+```
+
+Results are reproducible for a given `seed` whatever the number of workers.
+
+## Bootstrap confidence intervals
+
+`boot_ci()` resamples whole participants (case bootstrap) and refits the model
+to each resample. The default interval is the *expanded* percentile interval,
+which corrects the percentile interval for the small number of participants
+typical of experimental studies. Here it is computed for the maximal model:
+
+```{r boot}
+mf <- lmer(y ~ condition + (1 + condition | participant), data = d)
+b <- boot_ci(mf, cluster = "participant", B = 1999, seed = 1)
+b
+```
+
+Other intervals are available through `ci` (`"percentile"`, `"bca"`,
+`"basic"`), and `resample = "wild"` gives a wild bootstrap of participants.
+With groups of participants (a between-group design), `strata = "group"` keeps
+the size of each group fixed in every resample.
+
+## Adjusting for covariates
+
+When the model contains other terms, such as trial order, the tested term is
+permuted through the residuals of the reduced model (the Freedman-Lane
+procedure), which keeps the covariate effects in place. `method = "auto"`, the
+default, chooses this automatically:
+
+```{r covariate}
+d$order <- as.numeric(scale(d$trial_index))
+m_order <- lmer(y ~ condition + order + (1 | participant), data = d)
+pt_order <- perm_test(m_order, "condition", unit = "trial",
+                      exchange = exch_signflip("participant"),
+                      B = 1999, seed = 1)
+pt_order
+```
+
+## Diagnostics
+
+Two quick checks help interpret a result. `diag_agreement()` compares the
+model coefficient with the mean of the participant-level differences; a large
+discrepancy suggests that the model weights participants in an unexpected way
+or that a confound is at work:
+
+```{r agreement}
+diag_agreement(m, "condition", cluster = "participant")
+```
+
+`diag_loso()` refits the model leaving out one participant at a time and
+reports how much each participant moves the estimate:
+
+```{r loso}
+lo <- diag_loso(mf, cluster = "participant")
+lo
+```
+
+```{r loso-plot, fig.height = 3.5}
+plot(lo)
+```
+
+## Checking the test for your design
+
+`perm_calibrate()` simulates data from the fitted model with the effect
+removed and reports how often the permutation and Wald tests reject at the 5%
+level. It is the most direct way to check that the chosen exchangeability
+gives a valid test for a given design; `vignette("time-courses")` shows it
+with autocorrelated residuals.
+
+```{r calibrate}
+cal <- perm_calibrate(m, "condition", unit = "trial",
+                      exchange = exch_signflip("participant"),
+                      n_sim = 100, B = 99, seed = 1)
+cal
+```
+
+The intercept-only Wald test rejects far more often than 5% when the effect
+is truly absent, whereas the permutation test of the same model stays close
+to the nominal level.
+
+## Reporting
+
+Every result has a `tidy()` method returning a data frame, convenient for
+tables:
+
+```{r tidy}
+tidy(pt)
+tidy(b)
+```
+
+For reporting, use at least the default number of resamples (`B = 4999`).

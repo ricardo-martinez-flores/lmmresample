@@ -1,0 +1,197 @@
+---
+title: "Time courses"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Time courses}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.path = "figures/tc-",
+                      fig.width = 6, fig.height = 3.5, dpi = 96)
+```
+
+*This vignette is precomputed: the results shown were obtained with the code
+displayed, which takes about half an hour to run on one core.*
+
+Physiological signals such as pupil size, EEG or skin conductance are sampled
+many times per trial, and consecutive samples are strongly correlated. A
+mixed model of the full time series, with the condition effect allowed to
+change over time, describes the data well, but its Wald and Satterthwaite
+tests treat the samples as nearly independent and are far too liberal. In
+simulations with realistic autocorrelation they declared about half of
+truly null condition × time effects significant.
+
+`lmmresample` keeps the model and replaces only the inference: whole trials
+are permuted or whole participants resampled, so the autocorrelation within
+trials is carried into the reference distribution.
+
+```{r setup, message = FALSE}
+library(lmmresample)
+library(lme4)
+library(splines)
+```
+
+## Example data
+
+Twenty participants complete 20 trials in each of two conditions; each trial
+has 50 samples over two seconds, with strongly autocorrelated noise (AR(1)
+coefficient 0.9). The response in condition B rises above condition A from
+0.5 s.
+
+```{r data}
+d <- sim_blocks("within", level = "timeseries", n_participants = 20,
+                n_trials = 20, n_time = 50, sampling_rate = 25,
+                effect_condition = 0.6, effect_onset = 0.5, sd_slope = 0.3,
+                ar1 = 0.9, seed = 2)
+head(d[c("participant", "trial", "condition", "time", "y")])
+```
+
+## The model
+
+The time course is described with a natural spline of time, and its
+interaction with condition captures how the condition difference changes over
+the trial:
+
+```{r model}
+m3 <- lmer(y ~ condition * ns(time, 3) + (1 | participant), data = d)
+```
+
+### Is the time course described adequately?
+
+`diag_timecourse()` averages the residuals over time in each condition. If the
+model captures the shape of the response and of the condition difference, the
+mean residual stays near zero; it is flagged when the largest standardised
+mean residual exceeds a Bonferroni threshold.
+
+```{r timecourse-3}
+diag_timecourse(m3, "time", by = "condition", cluster = "participant")
+```
+
+The sharp onset in condition B is not captured by three degrees of freedom.
+With four, the departure disappears:
+
+```{r timecourse-4}
+m <- lmer(y ~ condition * ns(time, 4) + (1 | participant), data = d)
+tc <- diag_timecourse(m, "time", by = "condition", cluster = "participant")
+tc
+```
+
+```{r timecourse-plot, fig.height = 3}
+plot(tc)
+```
+
+A misspecified time course does not invalidate the permutation test, but the
+coefficients then answer a different question and power is lost.
+
+### How strong is the autocorrelation?
+
+```{r acf}
+ac <- diag_acf(m, series = "trial", time = "time")
+ac
+```
+
+```{r acf-plot, fig.height = 3}
+plot(ac)
+```
+
+## Testing the condition × time interaction
+
+The interaction has four coefficients, tested jointly. Because the model
+contains other terms that depend on time, the residuals of the reduced model
+(without the interaction) are permuted between trials (Freedman-Lane); `time`
+tells the function how to match samples within trials. With
+`exch_signflip("participant")`, the condition labels of all trials of a random
+subset of participants are swapped, which tests the mean effect while letting
+participants differ in theirs.
+
+```{r perm}
+pt <- perm_test(m, "condition:ns(time, 4)", unit = "trial",
+                exchange = exch_signflip("participant"), time = "time",
+                B = 1999, seed = 1)
+pt
+```
+
+For comparison, the Wald test of the same four coefficients:
+
+```{r wald}
+cf <- grep("^conditionB:", names(fixef(m)), value = TRUE)
+b <- fixef(m)[cf]
+V <- as.matrix(vcov(m))[cf, cf]
+stats::pchisq(drop(b %*% solve(V, b)), df = length(cf), lower.tail = FALSE)
+```
+
+Both tests detect this effect, which is large. The difference lies in what
+happens when there is no effect, which the next section checks.
+
+## Checking validity on your own data
+
+`perm_calibrate()` simulates new data from the fitted model with the tested
+effect removed, adds residuals with the autocorrelation estimated by
+`diag_acf()`, and counts how often each test rejects at the 5% level.
+
+```{r calibrate}
+cal <- perm_calibrate(m, "condition:ns(time, 4)", unit = "trial",
+                      exchange = exch_signflip("participant"), ar1 = ac,
+                      series = "trial", time = "time",
+                      n_sim = 100, B = 99, seed = 1)
+cal
+```
+
+```{r calibrate-plot, fig.height = 3}
+plot(cal, type = "rejection")
+```
+
+The Wald test rejects a true null hypothesis most of the time, whereas the
+permutation test stays at the nominal level. Running `perm_calibrate()` before
+interpreting a result shows whether this applies to a given design.
+
+## Confidence intervals for the time course
+
+`boot_ci()` resamples whole participants, so the intervals account for the
+dependence between samples. `terms` restricts the output to the coefficients
+of interest:
+
+```{r boot}
+bt <- boot_ci(m, cluster = "participant", terms = cf, B = 1999, seed = 1)
+bt
+```
+
+The Wald intervals of the same coefficients are much narrower than they should
+be:
+
+```{r wald-ci}
+se <- sqrt(diag(V))
+cbind(estimate = b, lower = b - 1.96 * se, upper = b + 1.96 * se)
+```
+
+## Group × condition × time
+
+With two groups of participants (`sim_blocks("mixed")`), the question is often
+whether the condition effect over time differs between groups. The term
+`group:condition:ns(time, 4)` is tested in the same way, with
+`exch_signflip("participant")` as before, and `boot_ci()` takes
+`strata = "group"` so that each bootstrap resample keeps the size of each
+group:
+
+```{r triple, eval = FALSE}
+mt <- lmer(y ~ group * condition * ns(time, 4) + (1 | participant),
+           data = d_mixed)
+perm_test(mt, "group:condition:ns(time, 4)", unit = "trial",
+          exchange = exch_signflip("participant"), time = "time")
+boot_ci(mt, cluster = "participant", strata = "group",
+        terms = grep("^group.*:condition.*:ns", names(fixef(mt)),
+                     value = TRUE))
+```
+
+## Practical notes
+
+* The intercept-only model is usually enough for the permutation test of a
+  time-course term: validity does not depend on the random-effects structure,
+  and the model is fast to fit and rarely singular.
+* Computation time grows with the number of rows and with `B`. Running in
+  parallel with `future::plan("multisession", workers = ...)` divides it by
+  roughly the number of workers.
+* Aggregating to fewer time points (e.g. 20 to 50 per trial) speeds up every
+  refit and changes the results very little when the signal is smooth.

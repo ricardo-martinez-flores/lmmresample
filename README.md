@@ -62,6 +62,45 @@ Development version from GitHub:
 pak::pak("ricardo-martinez-flores/lmmresample")
 ```
 
+## Example
+
+A permutation test of a condition × time interaction in a mixed model of
+full time series, and bootstrap intervals for its coefficients:
+
+```r
+library(lmmresample)
+library(lme4)
+library(splines)
+
+d <- sim_blocks("within", level = "timeseries", n_participants = 20,
+                n_trials = 20, n_time = 50, sampling_rate = 25,
+                effect_condition = 0.6, effect_onset = 0.5, seed = 2)
+m <- lmer(y ~ condition * ns(time, 4) + (1 | participant), data = d)
+
+# Whole trials are permuted; samples within a trial are matched by time
+perm_test(m, "condition:ns(time, 4)", unit = "trial",
+          exchange = exch_signflip("participant"), time = "time")
+
+# Whole participants are resampled
+boot_ci(m, cluster = "participant",
+        terms = grep("^conditionB:", names(fixef(m)), value = TRUE))
+
+# Does the test hold its error rate for this design?
+ac <- diag_acf(m, series = "trial", time = "time")
+perm_calibrate(m, "condition:ns(time, 4)", unit = "trial",
+               exchange = exch_signflip("participant"), ar1 = ac,
+               series = "trial", time = "time")
+```
+
+Computation runs in parallel with `future::plan("multisession")`.
+
+## Learning more
+
+- `vignette("lmmresample")`: getting started with a trial-level analysis.
+- `vignette("time-courses")`: full time series, diagnostics and calibration.
+- `vignette("multiple-comparisons")`: families of tests and pairwise
+  comparisons.
+
 ## Authors
 
 - Ricardo Martínez-Flores (maintainer) — [ORCID 0000-0002-8435-2710](https://orcid.org/0000-0002-8435-2710)

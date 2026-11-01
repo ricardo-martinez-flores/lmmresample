@@ -1,3 +1,15 @@
+# lmmresample 0.1.0
+
+* First release on CRAN.
+* Three vignettes: getting started (trial-level analysis), time courses
+  (diagnostics, calibration and intervals for full time series) and
+  multiple comparisons (families of tests and pairwise comparisons).
+* `diag_timecourse()` now flags a misfit when the largest standardised mean
+  residual (mean / SE across clusters) exceeds a Bonferroni-corrected 5%
+  threshold over all time points and groups, instead of a fixed size of the
+  mean residual. The result gains `max_z` and `threshold`, and `tidy()` a
+  `z` column.
+
 # lmmresample 0.0.0.9005
 
 * Parallel workers now attach the package of the model's fitting function
