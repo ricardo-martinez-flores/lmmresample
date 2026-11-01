@@ -61,6 +61,10 @@ test_that("diag_timecourse detects a missing condition by time interaction", {
   expect_gt(max(tc_bad$max_abs), 0.3)
   expect_lt(max(tc_good$max_abs), 0.1)
   expect_output(print(tc_bad), "flexible")
+  expect_gt(max(tc_bad$max_z), tc_bad$threshold)
+  expect_lt(max(tc_good$max_z), tc_good$threshold)
+  expect_output(print(tc_good), "No systematic departure")
+  expect_equal(tc_bad$threshold, stats::qnorm(1 - 0.025 / 60))
   expect_equal(sort(unique(tidy(tc_bad)$group)), c("A", "B"))
 })
 

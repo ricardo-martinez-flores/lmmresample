@@ -174,7 +174,9 @@ plot.lmmr_acf <- function(x, ...) {
 #' `splines::ns(time, df)` and their interaction with condition are usually
 #' adequate. The mean residual and its standard error are computed across
 #' clusters (e.g. participants) when `cluster` is given, and across rows
-#' otherwise.
+#' otherwise. A departure is flagged when the largest |mean / SE| exceeds the
+#' Bonferroni-corrected two-sided 5% threshold over all time points and
+#' groups; this assumes clusters are independent, so give `cluster`.
 #'
 #' @inheritParams diag_acf
 #' @param by Optional name of a grouping column (e.g. `"condition"`).
@@ -235,10 +237,19 @@ diag_timecourse <- function(model, time, by = NULL, cluster = NULL,
   summ <- summ[order(summ$group, summ$time), ]
   rownames(summ) <- NULL
   sd_r <- stats::sd(r)
+  summ$z <- summ$mean / summ$se
+  ok <- is.finite(summ$z)
+  max_z <- if (any(ok)) {
+    tapply(abs(summ$z[ok]), summ$group[ok], max)
+  } else {
+    NULL
+  }
   structure(
     list(timecourse = summ, time = time, by = by, cluster = cluster,
          residual_sd = sd_r,
-         max_abs = tapply(abs(summ$mean), summ$group, max) / sd_r),
+         max_abs = tapply(abs(summ$mean), summ$group, max) / sd_r,
+         max_z = max_z,
+         threshold = if (any(ok)) stats::qnorm(1 - 0.025 / sum(ok))),
     class = "lmmr_timecourse"
   )
 }
@@ -247,14 +258,28 @@ diag_timecourse <- function(model, time, by = NULL, cluster = NULL,
 print.lmmr_timecourse <- function(x, ...) {
   cat("\nResidual time course over `", x$time, "`",
       if (!is.null(x$by)) paste0(" by `", x$by, "`"), "\n\n", sep = "")
-  cat("Largest mean residual, in residual SD units:\n")
-  for (g in names(x$max_abs)) {
-    cat(sprintf("  %-12s %.2f\n", g, x$max_abs[[g]]))
+  if (!is.null(x$max_z)) {
+    cat("Largest |mean residual / SE| (Bonferroni threshold ",
+        sprintf("%.2f", x$threshold), " over ",
+        sum(is.finite(x$timecourse$z)), " points):\n", sep = "")
+    for (g in names(x$max_z)) {
+      cat(sprintf("  %-12s %.2f   (largest mean residual %.2f residual SD)\n",
+                  g, x$max_z[[g]], x$max_abs[[g]]))
+    }
+    misfit <- any(x$max_z > x$threshold)
+  } else {
+    cat("Largest mean residual, in residual SD units:\n")
+    for (g in names(x$max_abs)) {
+      cat(sprintf("  %-12s %.2f\n", g, x$max_abs[[g]]))
+    }
+    misfit <- any(x$max_abs > 0.1)
   }
-  if (any(x$max_abs > 0.1)) {
+  if (misfit) {
     cat("\nThe mean residual departs from zero over time: consider flexible",
         "time terms\n(e.g. splines::ns(time, 4)) and their interaction with",
         "the condition.\n")
+  } else {
+    cat("\nNo systematic departure of the mean residual from zero.\n")
   }
   cat("\n")
   invisible(x)
