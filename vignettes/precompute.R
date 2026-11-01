@@ -7,6 +7,6 @@ old <- setwd("vignettes")
 files <- commandArgs(TRUE)
 if (!length(files)) files <- c("lmmresample", "time-courses", "multiple-comparisons")
 for (f in files) {
-  knitr::knit(paste0(f, ".Rmd.orig"), paste0(f, ".Rmd"))
+  knitr::knit(paste0(f, ".Rmd.orig"), paste0(f, ".Rmd"), envir = new.env())
 }
 setwd(old)

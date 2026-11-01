@@ -99,7 +99,7 @@ Here, stimuli of three types are presented, and only the negative stimuli
 increase the response. Trial order is included as a covariate.
 
 ```{r pw-data}
-d <- sim_blocks("within", level = "trial", n_participants = 24, n_trials = 45,
+d <- sim_blocks("within", level = "trial", n_participants = 24, n_trials = 48,
                 seed = 4)
 d$condition <- NULL
 set.seed(4)
