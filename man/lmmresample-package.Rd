@@ -34,7 +34,7 @@ Useful links:
 
 Authors:
 \itemize{
-  \item Hans Sup<U+00E8>r
+  \item Hans Sup<U+00E8>r \email{hans.super@icrea.cat} (\href{https://orcid.org/0000-0001-9328-0096}{ORCID})
 }
 
 }

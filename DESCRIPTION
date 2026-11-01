@@ -5,7 +5,8 @@ Authors@R: c(
     person("Ricardo", "Martínez-Flores", , "ricardo.antonio.martinezf@gmail.com",
            role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-8435-2710")),
-    person("Hans", "Supèr", role = "aut")
+    person("Hans", "Supèr", , "hans.super@icrea.cat", role = "aut",
+           comment = c(ORCID = "0000-0001-9328-0096"))
   )
 Description: Permutation and bootstrap inference for linear and linear
     mixed-effects models fitted to block-structured repeated

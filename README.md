@@ -104,7 +104,7 @@ Computation runs in parallel with `future::plan("multisession")`.
 ## Authors
 
 - Ricardo Martínez-Flores (maintainer) — [ORCID 0000-0002-8435-2710](https://orcid.org/0000-0002-8435-2710)
-- Hans Supèr
+- Hans Supèr — [ORCID 0000-0001-9328-0096](https://orcid.org/0000-0001-9328-0096)
 
 ## License
 
