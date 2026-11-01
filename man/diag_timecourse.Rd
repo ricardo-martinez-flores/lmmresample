@@ -41,7 +41,9 @@ question and the tests lose power. Flexible terms such as
 \code{splines::ns(time, df)} and their interaction with condition are usually
 adequate. The mean residual and its standard error are computed across
 clusters (e.g. participants) when \code{cluster} is given, and across rows
-otherwise.
+otherwise. A departure is flagged when the largest |mean / SE| exceeds the
+Bonferroni-corrected two-sided 5\% threshold over all time points and
+groups; this assumes clusters are independent, so give \code{cluster}.
 }
 \examples{
 d <- sim_blocks("within", n_participants = 8, n_trials = 10, n_time = 30,
