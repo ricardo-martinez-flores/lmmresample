@@ -163,9 +163,8 @@ plot(lo)
 
 `perm_calibrate()` simulates data from the fitted model with the effect
 removed and reports how often the permutation and Wald tests reject at the 5%
-level. It is the most direct way to check that the chosen exchangeability
-gives a valid test for a given design; `vignette("time-courses")` shows it
-with autocorrelated residuals.
+level. It checks that the chosen exchangeability gives a valid test for a
+given design:
 
 ```{r calibrate}
 cal <- perm_calibrate(m, "condition", unit = "trial",
@@ -174,9 +173,13 @@ cal <- perm_calibrate(m, "condition", unit = "trial",
 cal
 ```
 
-The intercept-only Wald test rejects far more often than 5% when the effect
-is truly absent, whereas the permutation test of the same model stays close
-to the nominal level.
+Both tests hold the nominal level here. The simulated data reproduce the
+structure of the fitted model, which has independent residuals and no
+participant variation in the effect, and under that structure the Wald test
+is valid too. The calibration reflects only the dependence included in the
+simulation: for time series, `ar1` adds the autocorrelation of the residuals,
+and `vignette("time-courses")` shows how differently the two tests then
+behave.
 
 ## Reporting
 
