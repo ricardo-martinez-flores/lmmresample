@@ -6,3 +6,4 @@
 ^\.claude$
 ^vignettes/.*\.Rmd\.orig$
 ^vignettes/precompute\.R$
+^cran-comments\.md$
